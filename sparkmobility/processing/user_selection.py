@@ -1,15 +1,9 @@
-import folium
-import h3
 import matplotlib
-import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 from matplotlib.colors import LinearSegmentedColormap
-from matplotlib.ticker import MultipleLocator
 from pyspark.sql import functions as F
-
-from sparkmobility.utils.session import create_spark_session
 
 sns.set(style="whitegrid", font_scale=1.5)
 custom_colors = [
@@ -54,7 +48,7 @@ class UserSelection:
                     / 86400
                 ).cast("int"),
             )
-        )
+        ).cache()
 
         active_level = (
             df_grouped.groupBy("duration_days", "num_stays")
@@ -63,17 +57,26 @@ class UserSelection:
             .toPandas()
         )
 
-        selected_users = df_grouped.filter(
+        filter_condition = (
             (F.col("num_stays") >= num_stay_points_range[0])
             & (F.col("num_stays") <= num_stay_points_range[1])
             & (F.col("duration_days") >= time_span_days_range[0])
             & (F.col("duration_days") <= time_span_days_range[1])
-        ).select("caid")
+        )
+
+        selected_users = df_grouped.filter(filter_condition).select("caid")
 
         filtered_df = df.join(selected_users, on="caid", how="inner")
 
-        self.dataset.num_total_users = df.select("caid").distinct().count()
-        self.dataset.num_filtered_users = selected_users.count()
+        # df_grouped has one row per caid, so its row count equals the distinct
+        # user count. Computing both totals in a single agg avoids the extra
+        # distinct+count and filter+count shuffles.
+        counts = df_grouped.agg(
+            F.count("*").alias("total"),
+            F.sum(F.when(filter_condition, 1).otherwise(0)).alias("filtered"),
+        ).first()
+        self.dataset.num_total_users = counts["total"]
+        self.dataset.num_filtered_users = counts["filtered"]
 
         filtered_df.write.mode("overwrite").parquet(
             self.dataset.output_path + "/FilteredUserStayPoints"
@@ -94,6 +97,7 @@ class UserSelection:
             "Filtered users saved to:",
             self.dataset.output_path + "/FilteredUserStayPoints",
         )
+        df_grouped.unpersist()
         return fig, ax
 
     @staticmethod
