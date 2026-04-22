@@ -74,6 +74,11 @@ namespace fs = std::filesystem;
 
 using namespace std;
 
+// Suppress per-row-group progress chatter when --quiet is passed (or
+// TIMEGEO_QUIET=1 is set in the environment). All other output still emits
+// so the Python-side log filter can pick up genuinely useful lines.
+static bool g_quiet = false;
+
 // Adapted from 2-DT_Comm.cpp
 vector<double> real_time;
 vector<double> real_dt;
@@ -1318,11 +1323,6 @@ double AreaTestStat(const std::vector<double>& times, const std::vector<double>&
     // Normalize by number of bins to get average difference
     return area / nbins;
 }
-
-// Suppress per-row-group progress chatter when --quiet is passed (or
-// TIMEGEO_QUIET=1 is set in the environment). All other output still emits
-// so the Python-side log filter can pick up genuinely useful lines.
-static bool g_quiet = false;
 
 void run_DT_simulation(
     const std::string& input_path,

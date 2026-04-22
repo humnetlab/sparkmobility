@@ -90,7 +90,8 @@ class CppModuleHandler:
         if not self.module_path.exists():
             raise FileNotFoundError(
                 f"C++ binary not found at {self.module_path}. "
-                f"Build it with `cd {_HERE} && make`."
+                f"Reinstall sparkmobility (`pip install sparkmobility`) or, "
+                f"for an editable checkout, run `pip install -e .` from the repo root."
             )
         if not os.access(self.module_path, os.X_OK):
             raise PermissionError(f"C++ binary at {self.module_path} is not executable")
