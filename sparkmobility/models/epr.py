@@ -11,6 +11,10 @@ import powerlaw
 from shapely.geometry import Polygon
 from tqdm import tqdm
 
+from sparkmobility.logging_setup import configure_if_needed
+
+logger = logging.getLogger(__name__)
+
 
 class EPR:
     """
@@ -32,7 +36,10 @@ class EPR:
         gravity_type="single",
         name="EPR model",
         is_h3_hexagon=True,
+        configure_logging_if_needed: bool = True,
     ):
+        if configure_logging_if_needed:
+            configure_if_needed()
         """
         Initialize the EPR model.
 
@@ -124,13 +131,15 @@ class EPR:
             - 'num_users': number of unique users
             - 'num_transitions': total number of transitions
         """
-        print(f"Fitting EPR model from stay point data...")
-        print(f"  Input: {len(flow_df)} stay points")
-        print(f"  Users: {flow_df[user_column].nunique()}")
+        logger.info(
+            "fitting EPR from %d stay points across %d users",
+            len(flow_df),
+            flow_df[user_column].nunique(),
+        )
 
         # Build spatial tessellation if not provided
         if relevance_df is None:
-            print("Building spatial tessellation from H3 locations...")
+            logger.info("building spatial tessellation from H3 locations")
             relevance_df = self._build_spatial_tessellation(flow_df, location_column)
 
         # Store the spatial tessellation
@@ -142,16 +151,19 @@ class EPR:
         }
         self.index2tileid = {i: tileid for tileid, i in self.tileid2index.items()}
 
-        print("Computing OD matrix from stay point transitions...")
+        logger.info("computing OD matrix from stay point transitions")
 
         # Compute OD matrix from stay point sequences
         self.od_matrix, num_transitions = self._compute_od_matrix_from_stays(
             flow_df, user_column, datetime_column, location_column
         )
 
-        print(f"OD Matrix computed with shape: {self.od_matrix.shape}")
-        print(f"  Number of locations: {len(self.tileid2index)}")
-        print(f"  Total transitions: {num_transitions}")
+        logger.info(
+            "OD matrix %s, %d locations, %d transitions",
+            self.od_matrix.shape,
+            len(self.tileid2index),
+            num_transitions,
+        )
 
         # Return result dictionary (similar to Gravity model's GLM result)
         result = {
@@ -201,7 +213,7 @@ class EPR:
             )
 
         gdf = gpd.GeoDataFrame(data, geometry="geometry", crs="EPSG:4326")
-        print(f"  Built tessellation: {len(gdf)} locations")
+        logger.info("built tessellation with %d locations", len(gdf))
 
         return gdf
 

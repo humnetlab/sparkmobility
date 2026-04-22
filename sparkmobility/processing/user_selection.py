@@ -1,9 +1,13 @@
+import logging
+
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 from matplotlib.colors import LinearSegmentedColormap
 from pyspark.sql import functions as F
+
+logger = logging.getLogger(__name__)
 
 sns.set(style="whitegrid", font_scale=1.5)
 custom_colors = [
@@ -86,16 +90,12 @@ class UserSelection:
             active_level, num_stay_points_range, time_span_days_range
         )
 
-        print("Total users:", self.dataset.num_total_users)
-        print(
-            "Filtered users:",
+        out_path = self.dataset.output_path + "/FilteredUserStayPoints"
+        logger.info(
+            "filtered %d/%d users; saved to %s",
             self.dataset.num_filtered_users,
-            "\n Saved to:",
-            self.dataset.output_path + "/FilteredUserStayPoints",
-        )
-        print(
-            "Filtered users saved to:",
-            self.dataset.output_path + "/FilteredUserStayPoints",
+            self.dataset.num_total_users,
+            out_path,
         )
         df_grouped.unpersist()
         return fig, ax

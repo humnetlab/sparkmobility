@@ -1,3 +1,5 @@
+import logging
+
 import h3
 import numpy as np
 import pandas as pd
@@ -6,6 +8,10 @@ from geopy.distance import geodesic
 from shapely.geometry import Point, Polygon
 from statsmodels.genmod.generalized_linear_model import GLM
 from tqdm import tqdm
+
+from sparkmobility.logging_setup import configure_if_needed
+
+logger = logging.getLogger(__name__)
 
 tqdm.pandas()
 
@@ -156,7 +162,7 @@ class Gravity:
             origin_relevance = self.weights[self.tileid2index[origin_id]]
             destination_relevance = self.weights[self.tileid2index[destination_id]]
         except KeyError:
-            print(f'Missing info for location "{origin_id}" Skipping ...')
+            logger.warning('missing info for location "%s"; skipping', origin_id)
             return
 
         if origin_relevance <= 0 or destination_relevance <= 0:
@@ -193,7 +199,10 @@ class Gravity:
         gravity_type="single",  # 'single' or 'global'
         name="Gravity model",
         is_h3_hexagon=True,
+        configure_logging_if_needed: bool = True,
     ):
+        if configure_logging_if_needed:
+            configure_if_needed()
         """
         Initialize the Gravity model instance.
 
@@ -318,7 +327,7 @@ class Gravity:
 
             elif out_format == "flows":
                 avg_flows_matrix = trip_probs_matrix * tot_outflows[:, np.newaxis]
-                print(avg_flows_matrix)
+                logger.debug("avg_flows_matrix:\n%s", avg_flows_matrix)
                 return self._from_matrix_to_flowdf(
                     avg_flows_matrix, origins, spatial_tessellation
                 )
@@ -371,7 +380,7 @@ class Gravity:
             lambda flow_example: self._update_training_set(flow_example), axis=1
         )
 
-        print("Fitting GLM Model...")
+        logger.info("fitting GLM model")
         model = GLM(
             self.y,
             self.X,

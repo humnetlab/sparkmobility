@@ -1,6 +1,14 @@
+import logging
 import os
 import urllib.request
 from importlib.metadata import PackageNotFoundError, version
+
+from .logging_setup import configure_logging  # noqa: F401
+
+logger = logging.getLogger(__name__)
+# stdlib convention: ship a NullHandler so library use without
+# configure_logging() stays silent rather than emitting a warning.
+logger.addHandler(logging.NullHandler())
 
 # JAR name tracks the Python package version so the two sides cannot drift.
 # Fall back to the sparkmobility-scala default version if package metadata
@@ -17,10 +25,10 @@ JAR_PATH = os.path.join(os.path.dirname(__file__), "lib", JAR_NAME)
 
 def ensure_jar():
     if not os.path.exists(JAR_PATH):
-        print(f"JAR file not found at {JAR_PATH}. Downloading from GCS...")
+        logger.info("JAR file not found at %s; downloading from GCS", JAR_PATH)
         os.makedirs(os.path.dirname(JAR_PATH), exist_ok=True)
         urllib.request.urlretrieve(JAR_URL, JAR_PATH)
-        print("Download complete.")
+        logger.info("JAR download complete")
 
 
 ensure_jar()
