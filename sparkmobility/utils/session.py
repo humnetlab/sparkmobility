@@ -1,5 +1,6 @@
 import atexit
 import functools
+import os
 
 from pyspark.sql import SparkSession
 
@@ -14,6 +15,17 @@ _active_session: SparkSession | None = None
 
 
 def _build_spark_session() -> SparkSession:
+    # In PySpark local mode the driver JVM is launched by py4j before
+    # spark.driver.extraJavaOptions can take effect, so -Djava.io.tmpdir
+    # has to be injected via the env var the JVM reads at startup.
+    # Otherwise hsperfdata lands in /tmp and warns when /tmp is full.
+    tmpdir = str(config["TEMP_DIR"])
+    java_opts = f"-Djava.io.tmpdir={tmpdir}"
+    existing = os.environ.get("_JAVA_OPTIONS", "")
+    if java_opts not in existing:
+        os.environ["_JAVA_OPTIONS"] = f"{java_opts} {existing}".strip()
+    os.environ.setdefault("TMPDIR", tmpdir)
+
     spark = (
         SparkSession.builder.master(f"local[{config['CORES']}]")
         .appName("SparkMobility")
