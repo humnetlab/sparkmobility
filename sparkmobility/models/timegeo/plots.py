@@ -16,6 +16,24 @@ import pandas as pd
 
 from sparkmobility.models.timegeo._pipeline import s5_aggregated_plots as _plots
 
+# TimeGeo.generate() returns a DataFrame keyed on ``user`` / ``datetime``,
+# but the parquet helpers in s5_aggregated_plots expect the raw simulation
+# schema (``user_id`` / ``timeslot``). ``_normalize_schema`` converts back
+# so callers can pass either flavor transparently.
+_EPOCH = pd.Timestamp("1970-01-01")
+
+
+def _normalize_schema(df: pd.DataFrame, slot_interval_seconds: int) -> pd.DataFrame:
+    if "user_id" in df.columns and "timeslot" in df.columns:
+        return df
+    df = df.rename(columns={"user": "user_id"})
+    df["timeslot"] = (
+        ((df["datetime"] - _EPOCH).dt.total_seconds() / slot_interval_seconds)
+        .round()
+        .astype("int64")
+    )
+    return df
+
 
 def _to_parquet(df: pd.DataFrame, path: Path) -> Path:
     df.to_parquet(path, index=False)
@@ -34,12 +52,19 @@ def plot_stay_durations(
     traj_df: pd.DataFrame,
     observed: Optional[pd.DataFrame] = None,
     output: str | Path = "stay_durations.png",
+    slot_interval_seconds: int = 600,
 ) -> None:
     """Plot stay-duration CDF for simulation (and optional observed) data."""
     with tempfile.TemporaryDirectory() as tmp:
-        sim_p = _to_parquet(traj_df, Path(tmp) / "sim.parquet")
+        sim_p = _to_parquet(
+            _normalize_schema(traj_df, slot_interval_seconds),
+            Path(tmp) / "sim.parquet",
+        )
         obs_p = (
-            _to_parquet(observed, Path(tmp) / "obs.parquet")
+            _to_parquet(
+                _normalize_schema(observed, slot_interval_seconds),
+                Path(tmp) / "obs.parquet",
+            )
             if observed is not None
             else None
         )
@@ -54,12 +79,19 @@ def plot_trip_distance(
     traj_df: pd.DataFrame,
     observed: Optional[pd.DataFrame] = None,
     output: str | Path = "trip_distance.png",
+    slot_interval_seconds: int = 600,
 ) -> None:
     """Plot trip-distance CDF."""
     with tempfile.TemporaryDirectory() as tmp:
-        sim_p = _to_parquet(traj_df, Path(tmp) / "sim.parquet")
+        sim_p = _to_parquet(
+            _normalize_schema(traj_df, slot_interval_seconds),
+            Path(tmp) / "sim.parquet",
+        )
         obs_p = (
-            _to_parquet(observed, Path(tmp) / "obs.parquet")
+            _to_parquet(
+                _normalize_schema(observed, slot_interval_seconds),
+                Path(tmp) / "obs.parquet",
+            )
             if observed is not None
             else None
         )
@@ -74,12 +106,19 @@ def plot_daily_locations(
     traj_df: pd.DataFrame,
     observed: Optional[pd.DataFrame] = None,
     output: str | Path = "daily_locations.png",
+    slot_interval_seconds: int = 600,
 ) -> None:
     """Plot daily-visited-locations distribution."""
     with tempfile.TemporaryDirectory() as tmp:
-        sim_p = _to_parquet(traj_df, Path(tmp) / "sim.parquet")
+        sim_p = _to_parquet(
+            _normalize_schema(traj_df, slot_interval_seconds),
+            Path(tmp) / "sim.parquet",
+        )
         obs_p = (
-            _to_parquet(observed, Path(tmp) / "obs.parquet")
+            _to_parquet(
+                _normalize_schema(observed, slot_interval_seconds),
+                Path(tmp) / "obs.parquet",
+            )
             if observed is not None
             else None
         )
@@ -95,12 +134,19 @@ def plot_location_rank(
     observed: Optional[pd.DataFrame] = None,
     output: str | Path = "location_rank.png",
     top_n: int = 50,
+    slot_interval_seconds: int = 600,
 ) -> None:
     """Plot location-rank frequency."""
     with tempfile.TemporaryDirectory() as tmp:
-        sim_p = _to_parquet(traj_df, Path(tmp) / "sim.parquet")
+        sim_p = _to_parquet(
+            _normalize_schema(traj_df, slot_interval_seconds),
+            Path(tmp) / "sim.parquet",
+        )
         obs_p = (
-            _to_parquet(observed, Path(tmp) / "obs.parquet")
+            _to_parquet(
+                _normalize_schema(observed, slot_interval_seconds),
+                Path(tmp) / "obs.parquet",
+            )
             if observed is not None
             else None
         )

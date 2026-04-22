@@ -1,10 +1,5 @@
-<!-- [![DOI](https://zenodo.org/badge/184337448.svg)](https://zenodo.org/badge/latestdoi/184337448)
-![GitHub release (latest by date)](https://img.shields.io/github/v/release/scikit-mobility/scikit-mobility)
-![GitHub milestones](https://img.shields.io/github/milestones/open/scikit-mobility/scikit-mobility)
-![GitHub](https://img.shields.io/github/license/scikit-mobility/scikit-mobility)
-![GitHub contributors](https://img.shields.io/github/contributors/scikit-mobility/scikit-mobility) -->
-
-![CI](https://github.com/humnetlab/sparkmobility/actions/workflows/ci.yaml/badge.svg)
+![wheels](https://github.com/humnetlab/sparkmobility/actions/workflows/wheels.yml/badge.svg)
+![PyPI](https://img.shields.io/pypi/v/sparkmobility?cacheSeconds=3600)
 ![release](https://img.shields.io/github/v/release/humnetlab/sparkmobility?include_prereleases&cacheSeconds=3600)
 ![GitHub contributors](https://img.shields.io/github/contributors/humnetlab/sparkmobility?cacheSeconds=3600)
 
@@ -13,12 +8,6 @@
   <img src="resources/sparkmobility_icon.png" width="150" style="margin-right: 20px;">
   <h1 style="margin: 0; text-align: left;">sparkmobility - A Spark-based Python Library for Processing, Modeling, and Analyzing Large Mobility Datasets</h1>
 </div>
-
-<!-- ###### Try `scikit-mobility` without installing it
-[![Twitter](https://img.shields.io/twitter/url/https/twitter.com/scikitmobility.svg?style=social&label=Follow%20%40scikitmobility)](https://twitter.com/scikitmobility)
-
-- in a MyBinder notebook: [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/scikit-mobility/scikit-mobility/master)
-- on [Jovian](https://jovian.ai/jonpappalord/collections/scikit-mobility-tutorial) -->
 
 
 `sparkmobility` is a library for processing large mobility dataset, including Location-Based Service (LBS) using the [Apache Spark](https://spark.apache.org) framework. This Python repository serves as the main interface between `sparkmobility` and users. The Scala repository holds various data processing pipelines which can be found at [sparkmobility-scala](https://github.com/humnetlab/sparkmobility-scala).
@@ -35,163 +24,25 @@ Key features of `sparkmobility` include:
 
 
 ## Table of contents
-<!-- 1. [Documentation](#documentation)
-2. [Citing](#citing)
-3. [Collaborate with us](#collaborate) -->
-<!-- 4. [Installation](#installation)
-	- [with pip](#installation_pip)
-	- [with conda](#installation_conda)
-	- [known issues](#known_conda)
-	- [test installation](#test_installation)
-	- [Google Colab](#google_colab)
-5. [Tutorials](#tutorials) -->
-1. [Examples](#examples)
+1. [Installation](#installation)
+2. [Examples](#examples)
 	- [Import and configure sparkmobility](#Import)
 	- [MobilityDataset](#MobilityDataset)
 	- [StayDetection](#StayDetection)
 	- [UserSelection](#UserSelection)
 
-<!--
-<a id='documentation'></a>
-## Documentation
-The documentation of scikit-mobility's classes and functions is available at: https://scikit-mobility.github.io/scikit-mobility/
-
-<a id='citing'></a>
-## Citing
-
-if you use scikit-mobility please cite the following paper:
-
-Pappalardo, L., Simini, F., Barlacchi, G., & Pellungrini, R. (2022). scikit-mobility: A Python Library for the Analysis, Generation, and Risk Assessment of Mobility Data. Journal of Statistical Software, 103(1), 1–38. https://doi.org/10.18637/jss.v103.i04
-
-Bibtex:
-```
-@article{JSSv103i04,
- title={scikit-mobility: A Python Library for the Analysis, Generation, and Risk Assessment of Mobility Data},
- volume={103},
- url={https://www.jstatsoft.org/index.php/jss/article/view/v103i04},
- doi={10.18637/jss.v103.i04},
- number={1},
- journal={Journal of Statistical Software},
- author={Pappalardo, Luca and Simini, Filippo and Barlacchi, Gianni and Pellungrini, Roberto},
- year={2022},
- pages={1–38}
-}
-```
-
-<a id='collaborate'></a>
-## Collaborate with us
-`scikit-mobility` is an active project and any contribution is welcome.
-
-If you would like to include your algorithm in `scikit-mobility`, feel free to fork the project, open an issue and [contact us](mailto:scikit.mobility@gmail.com).
-
 
 <a id='installation'></a>
 ## Installation
-scikit-mobility for Python >= 3.8 and all it's dependencies are available from conda-forge and can be installed using
-`conda install -c conda-forge scikit-mobility`.
 
-Note that it is **NOT recommended** to install scikit-mobility from PyPI! If you're on Windows or Mac, many GeoPandas / scikit-mobility dependencies cannot be pip installed (for details see the corresponding notes in the GeoPandas documentation).
-
-<a id='installation_pip'></a>
-### installation with pip (python >= 3.8 required)
-
-1. Create an environment `skmob`
-
-        python3 -m venv skmob
-
-2. Activate
-
-        source skmob/bin/activate
-
-3. Install skmob
-
-        pip install scikit-mobility
-
-4. OPTIONAL to use `scikit-mobility` on the jupyter notebook
-
-	- Activate the virutalenv:
-
-			source skmob/bin/activate
-
-	- Install jupyter notebook:
-
-			pip install jupyter
-
-	- Run jupyter notebook
-
-			jupyter notebook
-
-	- (Optional) install the kernel with a specific name
-
-			ipython kernel install --user --name=skmob
-
-
-<a id='installation_conda'></a>
-### installation with conda - miniconda
-
-1. Create an environment `skmob` and install pip
-
-        conda create -n skmob pip python=3.9 rtree
-
-2. Activate
-
-        conda activate skmob
-
-3. Install skmob
-
-        conda install -c conda-forge scikit-mobility
-
-4. OPTIONAL to use `scikit-mobility` on the jupyter notebook
-
-    - Install the kernel
-
-          conda install jupyter -c conda-forge
-
-    - Open a notebook and check if the kernel `skmob` is on the kernel list. If not, run the following:
-    	- On Mac and Linux
-
-          	  env=$(basename `echo $CONDA_PREFIX`)
-          	  python -m ipykernel install --user --name "$env" --display-name "Python [conda env:"$env"]"
-
-       - On Windows
-
-             python -m ipykernel install --user --name skmob --display-name "Python [conda env: skmob]"
-
-:exclamation: You may run into dependency issues if you try to import the package in Python. If so, try installing the following packages as followed.
+`sparkmobility` requires Python 3.11+ and a Java runtime (for Spark). Install from PyPI:
 
 ```
-conda install -n skmob pyproj urllib3 chardet markupsafe
+pip install sparkmobility
 ```
 
-<a id='test_installation'></a>
-### Test the installation
+On first import, `sparkmobility` downloads Apache Spark into `~/.spark` and fetches the matching Scala JAR from the [sparkmobility-scala GitHub Releases](https://github.com/humnetlab/sparkmobility-scala/releases). The JAR version is pinned to the installed package version (e.g. `sparkmobility-1.0.0.jar` for v1.0.0), so the Python and Scala sides cannot drift.
 
-```
-> source activate skmob
-(skmob)> python
->>> import skmob
->>>
-```
-
-<a id='google_colab'></a>
-## Google Colab
-scikit-mobility can be installed on <a href="https://colab.research.google.com/notebooks/intro.ipynb#recent=true">Google Colab</a> using the following commands:
-```
-!apt-get install -qq curl g++ make
-!curl -L http://download.osgeo.org/libspatialindex/spatialindex-src-1.8.5.tar.gz | tar xz
-import os
-os.chdir('spatialindex-src-1.8.5')
-!./configure
-!make
-!make install
-!pip install rtree
-!ldconfig
-!pip install scikit-mobility
-```
-
-<a id='tutorials'></a>
-## Tutorials
-You can some tutorials on scikit-mobility here: https://github.com/scikit-mobility/tutorials. -->
 
 <a id='examples'></a>
 ## Examples
@@ -209,22 +60,20 @@ To import `sparkmobility`, simply call the following:
 >>> sm.config["TEMP_DIR"] = "/my_path/to_tmp_folder"
 ```
 
-    JAR file not found at /data_1/albert/sparkmobility/sparkmobility/lib/sparkmobility010.jar. Downloading from GCS...
-    Download complete.
-    Spark already installed.
+On first import, you will see Spark installation + environment-variable messages printed to stdout, e.g.:
+
+    Spark installed at: /home/<user>/.spark/spark-3.5.5-bin-hadoop3-scala2.13
     Environment variables set for current session.
     To make this persistent, add the following to your shell config (e.g., .bashrc):
-    export SPARK_HOME="/home/albert/.spark/spark-3.5.5-bin-hadoop3-scala2.13"
+    export SPARK_HOME="/home/<user>/.spark/spark-3.5.5-bin-hadoop3-scala2.13"
     export PATH="$SPARK_HOME/bin:$PATH"
 
 Spark sessions can be configured through the `sparkmobility` configuration file. They include:
 
 - `sm.config['CORES']` sets the number of CPU cores for the parallelism in spark ;
 - `sm.config['MEMORY']` sets the amount of memory allocated for both the executor and driver in spark ;
-- `sm.config['LOG_LEVEL']` sets the level of messages during compue; ;
+- `sm.config['LOG_LEVEL']` sets the level of messages during compute ;
 - `sm.config['TEMP_DIR']` sets the path to the directory that holds the temporary files when running the pipelines. It is important to set it to a directory that has sufficient storage in disk to prevent out of storage error.
-
-When imported for the first time, `sparkmobility` automatically searches for the `.jar` file that contains the pre-compiled pipelines developed in Scala. If not, `sparkmobility` automatically downloads from Google Cloud Storage.
 
 
 <a id='MobilityDataset'></a>
@@ -241,14 +90,14 @@ Additionally, it is optional to define the time period and region of interests, 
 - `start_datetime` (type: datetime) ;
 - `end_datetime` (type: datetime) ;
 - `longitude` (type: list);
-- `laitude` (type: list);
+- `latitude` (type: list);
 - `time_zone` (type: str) specifies the local time zone of the region of interest.
 
 
 Initialize a `MobilityDataset`:
 
 ```python
->>> from sparkmobility.datatset import MobilityDataset
+>>> from sparkmobility.dataset import MobilityDataset
 >>> # create a MobilityDataset
 >>> myDataset = MobilityDataset(
         dataset_name="example_dataset",
@@ -262,14 +111,14 @@ Initialize a `MobilityDataset`:
         end_datetime="2025-01-31 23:59:59",
         longitude=[-118.9448, -117.6463], # LA region
         latitude=[33.7037, 34.3373],
-        time_zone="America/Los Angeles",
+        time_zone="America/Los_Angeles",
     )
 ```
 
 ```python
 >>> print(type(myDataset))
 ```
-	<class 'sparkmobility.datatset.MobilityDataset'>
+	<class 'sparkmobility.dataset.MobilityDataset'>
 
 
 <a id='StayDetection'></a>

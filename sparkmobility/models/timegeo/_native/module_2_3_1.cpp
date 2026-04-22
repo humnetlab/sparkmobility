@@ -790,8 +790,10 @@ void process_stay_regions_streaming(const std::string& input_path,
                                    int slot_interval) {
 
     // Add at the start of process_stay_regions_streaming function
-    std::cout << "File path length: " << input_path.length() << std::endl;
-    std::cout << "File path: " << input_path << std::endl;
+    if (!g_quiet) {
+        std::cout << "File path length: " << input_path.length() << std::endl;
+        std::cout << "File path: " << input_path << std::endl;
+    }
 
     // STANDALONE RUNS WITHOUT THIS
     // static bool arrow_initialized = false;
@@ -825,7 +827,7 @@ void process_stay_regions_streaming(const std::string& input_path,
     // Get file metadata
     auto file_metadata = reader->parquet_reader()->metadata();
     int num_row_groups = file_metadata->num_row_groups();
-    std::cout << "Number of row groups: " << num_row_groups << std::endl;
+    if (!g_quiet) std::cout << "Number of row groups: " << num_row_groups << std::endl;
 
     // Track unique users across all batches
     std::unordered_map<std::string, std::vector<StayRegion>> user_data;
@@ -888,14 +890,16 @@ void process_stay_regions_streaming(const std::string& input_path,
                     locid_idx = i;
             }
 
-            std::cout << "Found columns: "
-                      << "user_id=" << user_id_idx << ", "
-                      << "timestamp=" << timestamp_idx << ", "
-                      << "type=" << type_idx << ", "
-                      << "day=" << day_idx << ", "
-                      << "locid=" << locid_idx << ", "
-                      << "work_h3=" << work_h3_idx << ", "
-                      << "home_h3=" << home_h3_idx << std::endl;
+            if (!g_quiet) {
+                std::cout << "Found columns: "
+                          << "user_id=" << user_id_idx << ", "
+                          << "timestamp=" << timestamp_idx << ", "
+                          << "type=" << type_idx << ", "
+                          << "day=" << day_idx << ", "
+                          << "locid=" << locid_idx << ", "
+                          << "work_h3=" << work_h3_idx << ", "
+                          << "home_h3=" << home_h3_idx << std::endl;
+            }
 
             // Check if required columns are found
             if (user_id_idx == -1 || timestamp_idx == -1) {
@@ -905,7 +909,7 @@ void process_stay_regions_streaming(const std::string& input_path,
 
             // Process each chunk in the table
             int num_chunks = table->column(user_id_idx)->num_chunks();
-            std::cout << "Number of chunks: " << num_chunks << std::endl;
+            if (!g_quiet) std::cout << "Number of chunks: " << num_chunks << std::endl;
 
             for (int c = 0; c < num_chunks; c++) {
                 // Get arrays for this chunk
@@ -916,9 +920,11 @@ void process_stay_regions_streaming(const std::string& input_path,
                 arrow::Type::type user_id_type = user_id_array->type_id();
                 arrow::Type::type timestamp_type = timestamp_array->type_id();
 
-                std::cout << "Chunk " << c << " types - "
-                          << "user_id: " << user_id_type << ", "
-                          << "timestamp: " << timestamp_type << std::endl;
+                if (!g_quiet) {
+                    std::cout << "Chunk " << c << " types - "
+                              << "user_id: " << user_id_type << ", "
+                              << "timestamp: " << timestamp_type << std::endl;
+                }
 
                 // Handle user_id (support multiple types)
                 std::shared_ptr<arrow::StringArray> string_user_ids;
@@ -968,7 +974,7 @@ void process_stay_regions_streaming(const std::string& input_path,
                         std::cerr << "Failed to cast timestamp to TimestampArray" << std::endl;
                         continue;
                     }
-                    std::cout << "Successfully cast to TimestampArray" << std::endl;
+                    if (!g_quiet) std::cout << "Successfully cast to TimestampArray" << std::endl;
                 } else if (timestamp_type == arrow::Type::INT64) {
                     timestamp_is_int64 = true;
                     int64_timestamps = std::dynamic_pointer_cast<arrow::Int64Array>(timestamp_array);
@@ -1004,7 +1010,7 @@ void process_stay_regions_streaming(const std::string& input_path,
 
                 // Process rows in this chunk
                 int64_t chunk_size = user_id_array->length();
-                std::cout << "Processing " << chunk_size << " rows in chunk " << c << std::endl;
+                if (!g_quiet) std::cout << "Processing " << chunk_size << " rows in chunk " << c << std::endl;
 
                 for (int64_t i = 0; i < chunk_size; i++) {
                     // Skip null values
@@ -1095,7 +1101,7 @@ void process_stay_regions_streaming(const std::string& input_path,
                     // Process in batches to manage memory
                     if (user_data.size() >= CHUNK_SIZE) {
                         total_users_processed += user_data.size();
-                        std::cout << "Processing batch of " << user_data.size() << " users..." << std::endl;
+                        if (!g_quiet) std::cout << "Processing batch of " << user_data.size() << " users..." << std::endl;
                         process_users_batch(user_data, fout_id1, fout_id2, fout_id3, fout_id4, fout_id5, fout_id6, fout_id7, slot_interval);
                         user_data.clear();
                     }
@@ -1104,7 +1110,7 @@ void process_stay_regions_streaming(const std::string& input_path,
 
             // Process remaining users
             if (!user_data.empty()) {
-                std::cout << "Processing final batch of " << user_data.size() << " users..." << std::endl;
+                if (!g_quiet) std::cout << "Processing final batch of " << user_data.size() << " users..." << std::endl;
                 total_users_processed += user_data.size();
                 process_users_batch(user_data, fout_id1, fout_id2, fout_id3, fout_id4, fout_id5, fout_id6, fout_id7, slot_interval);
                 user_data.clear();

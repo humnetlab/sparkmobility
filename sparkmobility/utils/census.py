@@ -1,7 +1,7 @@
 import geopandas as gpd
 import pandas as pd
 
-from sparkmobility.utils.county_tesslation import tesselate_county
+from sparkmobility.utils.county_tessellation import tesselate_county
 
 
 def obtain_population_data(

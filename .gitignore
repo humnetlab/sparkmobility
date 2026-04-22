@@ -53,6 +53,7 @@ __pycache__/
 .Python
 build/
 build_local/
+REPO_FOLLOWUPS.md
 develop-eggs/
 dist/
 downloads/

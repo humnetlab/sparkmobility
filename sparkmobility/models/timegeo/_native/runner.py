@@ -2,12 +2,16 @@
 Runner for the C++ parameter-estimation binary (module_2_3_1).
 
 Streams the binary's stdout/stderr line-by-line through a log filter that
-collapses two known-noisy patterns:
+collapses known-noisy patterns:
 
 - "Processing row group N of M" (up to hundreds per run) — suppressed;
-  replaced by a single end-of-run summary.
+  rolled into a single end-of-run summary along with any bad_alloc failures.
 - "Error processing row group N: std::bad_alloc" — suppressed individually;
-  replaced by a single summary with the count and the first/last group ids.
+  rolled into the same summary.
+- Per-row-group startup diagnostics (schema dumps, chunk type lines,
+  found-columns lines, final-batch lines) — suppressed. Defense-in-depth
+  against old / unrebuilt binaries where ``--quiet`` does not yet gate
+  these patterns on the C++ side.
 
 Everything else passes through as INFO.
 
@@ -33,6 +37,24 @@ _BINARY = _HERE / "module_2_3_1"
 _RE_ROWGROUP = re.compile(r"^Processing row group (\d+) of (\d+)$")
 _RE_BADALLOC = re.compile(r"^Error processing row group (\d+): std::bad_alloc$")
 
+# Per-row-group startup diagnostics leaked from old / unrebuilt C++ binaries.
+# Dropped silently at the Python layer so the log stays clean even when the
+# shipped binary predates the broadened ``--quiet`` gating.
+_RE_NOISE = re.compile(
+    r"^("
+    r"Row group has \d+ rows"
+    r"|Table schema:\s*"
+    r"|  \d+: \w+ \(Type: .+\)"
+    r"|Found columns: .+"
+    r"|Number of chunks: \d+"
+    r"|Chunk \d+ types - .+"
+    r"|Processing \d+ rows in chunk \d+"
+    r"|Processing (batch|final batch) of \d+ users\.\.\."
+    r"|Successfully cast to TimestampArray"
+    r"|File path( length)?: .+"
+    r")$"
+)
+
 
 class _LogFilter:
     """Line-by-line filter that collapses noisy patterns into summaries."""
@@ -56,29 +78,40 @@ class _LogFilter:
         if m:
             self._bad_alloc_groups.append(int(m.group(1)))
             return
+        if _RE_NOISE.match(line):
+            return
         if line:
             self.log.info("module_2_3_1: %s", line)
 
     def flush(self) -> None:
-        if self._row_group_count:
-            elapsed = (
-                time.monotonic() - self._row_group_started
-                if self._row_group_started
-                else 0.0
+        if not self._row_group_count:
+            return
+        elapsed = (
+            time.monotonic() - self._row_group_started
+            if self._row_group_started
+            else 0.0
+        )
+        failed = len(self._bad_alloc_groups)
+        succeeded = self._row_group_count - failed
+        total = self._row_group_total or self._row_group_count
+        if failed:
+            g = self._bad_alloc_groups
+            self.log.error(
+                "module_2_3_1: attempted %d row groups in %.1fs; "
+                "%d succeeded, %d failed with std::bad_alloc (groups %d-%d)",
+                total,
+                elapsed,
+                succeeded,
+                failed,
+                g[0],
+                g[-1],
             )
+        else:
             self.log.info(
                 "module_2_3_1: processed %d/%d row groups in %.1fs",
                 self._row_group_count,
-                self._row_group_total or self._row_group_count,
+                total,
                 elapsed,
-            )
-        if self._bad_alloc_groups:
-            g = self._bad_alloc_groups
-            self.log.error(
-                "module_2_3_1: %d row groups failed with std::bad_alloc (groups %d\u2013%d)",
-                len(g),
-                g[0],
-                g[-1],
             )
 
 
