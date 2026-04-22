@@ -16,7 +16,7 @@ logger.addHandler(logging.NullHandler())
 try:
     __version__ = version("sparkmobility")
 except PackageNotFoundError:
-    __version__ = "0.1.0"
+    __version__ = "1.0.0"
 
 JAR_NAME = f"sparkmobility-{__version__}.jar"
 # Published by sparkmobility-scala's .github/workflows/release.yml on tag push.
