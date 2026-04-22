@@ -227,47 +227,72 @@ def export_simulation_results_to_parquet(
     - file_prefix (str): Prefix of the files to process
     """
 
-    all_results = []
     files = [
         f for f in os.listdir(input_folder) if file_prefix in f and f.endswith(".txt")
     ]
 
+    frames = []
     for filename in files:
         filepath = os.path.join(input_folder, filename)
-        current_user = None
-        timeslot = 0
+        # Each line is either a single-token user ID or
+        # "location_type longitude latitude". read_csv with 3 columns leaves
+        # the 2nd/3rd columns NaN on user-ID rows, which we use to segment.
+        raw = pd.read_csv(
+            filepath,
+            sep=" ",
+            header=None,
+            names=["c0", "c1", "c2"],
+            dtype=str,
+            engine="c",
+            skip_blank_lines=True,
+        )
+        if raw.empty:
+            continue
 
-        with open(filepath, "r") as f:
-            for line in f:
-                line = line.strip()
-                parts = line.split(" ")
+        user_mask = raw["c1"].isna()
+        # Forward-fill the user ID down onto each location row.
+        raw["user_id"] = raw["c0"].where(user_mask).ffill()
 
-                if len(parts) == 1:  # User ID line
-                    current_user = parts[0]
-                    timeslot = 0
-                elif len(parts) >= 3:  # Location line
-                    timeslot += 1
-                    location_type = parts[0]
-                    longitude = float(parts[1])
-                    latitude = float(parts[2])
+        loc = raw.loc[~user_mask].copy()
+        if loc.empty:
+            continue
 
-                    all_results.append(
-                        {
-                            "user_id": current_user,
-                            "timeslot": timeslot,
-                            "location_type": location_type,
-                            "longitude": longitude,
-                            "latitude": latitude,
-                            "file_index": filename.replace(file_prefix, "").replace(
-                                ".txt", ""
-                            ),
-                        }
-                    )
+        loc["timeslot"] = loc.groupby("user_id", sort=False).cumcount() + 1
+        loc = loc.rename(
+            columns={"c0": "location_type", "c1": "longitude", "c2": "latitude"}
+        )
+        loc["longitude"] = loc["longitude"].astype(float)
+        loc["latitude"] = loc["latitude"].astype(float)
+        loc["file_index"] = filename.replace(file_prefix, "").replace(".txt", "")
+        frames.append(
+            loc[
+                [
+                    "user_id",
+                    "timeslot",
+                    "location_type",
+                    "longitude",
+                    "latitude",
+                    "file_index",
+                ]
+            ]
+        )
 
-    # Create DataFrame and save as parquet
-    df = pd.DataFrame(all_results)
+    df = (
+        pd.concat(frames, ignore_index=True)
+        if frames
+        else pd.DataFrame(
+            columns=[
+                "user_id",
+                "timeslot",
+                "location_type",
+                "longitude",
+                "latitude",
+                "file_index",
+            ]
+        )
+    )
     to_parquet_robust(df, output_file, index=False)
-    logger.info(f"Exported {len(all_results)} simulation records to {output_file}")
+    logger.info(f"Exported {len(df)} simulation records to {output_file}")
 
     return df
 

@@ -66,209 +66,132 @@ def generate_simulation_input_parquet(
         return _generate_simulation_input_original(df, output_path)
 
 
+def _write_user_location_blocks(df, output_path):
+    """Write per-user location blocks from a df with columns
+    [caid, location_id, Longitude, Latitude], already sorted within each
+    user by time. Counts per (caid, location_id) and writes the first-seen
+    coords, preserving the order each location_id first appears."""
+    df = df.assign(_pos=df.groupby("caid").cumcount())
+    agg = (
+        df.groupby(["caid", "location_id"], sort=False)
+        .agg(
+            count=("location_id", "size"),
+            lon=("Longitude", "first"),
+            lat=("Latitude", "first"),
+            first_pos=("_pos", "min"),
+        )
+        .reset_index()
+        .sort_values(["caid", "first_pos"], kind="stable")
+    )
+    agg["line"] = (
+        agg["location_id"].astype(str)
+        + " "
+        + agg["count"].astype(str)
+        + " "
+        + agg["lon"].astype(str)
+        + " "
+        + agg["lat"].astype(str)
+        + "\n"
+    )
+    with open(output_path, "w") as g:
+        for caid, group in agg.groupby("caid", sort=False):
+            g.write(f"{caid}\n")
+            g.writelines(group["line"].tolist())
+
+
+def _location_id_from_trip_purpose(trip_purpose, location_index):
+    """Vectorized: 'h'/'w' → themselves; other → str(int(location_index)+1),
+    with non-numeric location_index mapped to '1'."""
+    idx = pd.to_numeric(location_index, errors="coerce").fillna(0).astype(int) + 1
+    loc = idx.astype(str)
+    loc = loc.mask(trip_purpose == "h", "h").mask(trip_purpose == "w", "w")
+    return loc
+
+
 def _generate_simulation_input_aligned_coords(df, output_path):
     """Generate simulation input from aligned data format with Longitude/Latitude columns."""
-    # Sort by user and timestamp
-    df = df.sort_values(["caid", "timestamp"]).reset_index(drop=True)
-
-    with open(output_path, "w") as g:
-        current_user = None
-        user_locations = {}
-        user_location_coords = {}
-
-        for _, row in df.iterrows():
-            user_id = str(row["caid"])
-            trip_purpose = row["trip_purpose"]  # 'h'=home, 'w'=work, 'o'=other
-            longitude = str(row["Longitude"])
-            latitude = str(row["Latitude"])
-
-            # Use trip_purpose directly as location_id for h/w, or use location_index for 'o'
-            if trip_purpose == "h":
-                location_id = "h"
-            elif trip_purpose == "w":
-                location_id = "w"
-            else:  # trip_purpose == 'o'
-                # For 'other' locations, use the location_index + 1
-                try:
-                    location_id = str(int(row["location_index"]) + 1)
-                except (ValueError, TypeError):
-                    location_id = "1"
-
-            # If new user, flush previous user's data
-            if current_user is not None and user_id != current_user:
-                g.write(current_user + "\n")
-                for loc_id in user_locations:
-                    g.write(
-                        f"{loc_id} {user_locations[loc_id]} "
-                        f"{user_location_coords[loc_id][0]} "
-                        f"{user_location_coords[loc_id][1]}\n"
-                    )
-                user_locations.clear()
-                user_location_coords.clear()
-
-            # Update current user's data
-            current_user = user_id
-            if location_id in user_locations:
-                user_locations[location_id] += 1
-            else:
-                user_locations[location_id] = 1
-                user_location_coords[location_id] = [longitude, latitude]
-
-        # Final flush for last user
-        if current_user is not None:
-            g.write(current_user + "\n")
-            for loc_id in user_locations:
-                g.write(
-                    f"{loc_id} {user_locations[loc_id]} "
-                    f"{user_location_coords[loc_id][0]} "
-                    f"{user_location_coords[loc_id][1]}\n"
-                )
-
+    df = df.sort_values(["caid", "timestamp"], kind="stable").reset_index(drop=True)
+    df = df.assign(
+        caid=df["caid"].astype(str),
+        location_id=_location_id_from_trip_purpose(
+            df["trip_purpose"], df["location_index"]
+        ),
+        Longitude=df["Longitude"].astype(str),
+        Latitude=df["Latitude"].astype(str),
+    )
+    _write_user_location_blocks(
+        df[["caid", "location_id", "Longitude", "Latitude"]], output_path
+    )
     logger.info(f"Simulation input written to: {output_path}")
     logger.info("Used aligned data format with direct Longitude/Latitude coordinates")
 
 
 def _generate_simulation_input_aligned(df, output_path):
     """Generate simulation input from aligned data format."""
-    # Sort by user and timestamp
-    df = df.sort_values(["caid", "timestamp"]).reset_index(drop=True)
-
-    with open(output_path, "w") as g:
-        current_user = None
-        user_locations = {}
-        user_location_coords = {}
-
-        for _, row in df.iterrows():
-            user_id = str(row["caid"])
-            trip_purpose = row["trip_purpose"]
-            longitude = str(row["Longitude"])
-            latitude = str(row["Latitude"])
-            location_id = str(row["location_index"])
-
-            # Convert location label
-            if trip_purpose == "h":
-                location_id = "h"
-            elif trip_purpose == "w":
-                location_id = "w"
-            else:
-                # For 'o' locations, use the location_index + 1
-                try:
-                    location_id = str(int(location_id) + 1)
-                except (ValueError, TypeError):
-                    location_id = "1"
-
-            # If new user, flush previous user's data
-            if current_user is not None and user_id != current_user:
-                g.write(current_user + "\n")
-                for loc_id in user_locations:
-                    g.write(
-                        f"{loc_id} {user_locations[loc_id]} "
-                        f"{user_location_coords[loc_id][0]} "
-                        f"{user_location_coords[loc_id][1]}\n"
-                    )
-                user_locations.clear()
-                user_location_coords.clear()
-
-            # Update current user's data
-            current_user = user_id
-            if location_id in user_locations:
-                user_locations[location_id] += 1
-            else:
-                user_locations[location_id] = 1
-                user_location_coords[location_id] = [longitude, latitude]
-
-        # Final flush for last user
-        if current_user is not None:
-            g.write(current_user + "\n")
-            for loc_id in user_locations:
-                g.write(
-                    f"{loc_id} {user_locations[loc_id]} "
-                    f"{user_location_coords[loc_id][0]} "
-                    f"{user_location_coords[loc_id][1]}\n"
-                )
-
+    df = df.sort_values(["caid", "timestamp"], kind="stable").reset_index(drop=True)
+    df = df.assign(
+        caid=df["caid"].astype(str),
+        location_id=_location_id_from_trip_purpose(
+            df["trip_purpose"], df["location_index"]
+        ),
+        Longitude=df["Longitude"].astype(str),
+        Latitude=df["Latitude"].astype(str),
+    )
+    _write_user_location_blocks(
+        df[["caid", "location_id", "Longitude", "Latitude"]], output_path
+    )
     logger.info(f"Simulation input written to: {output_path}")
 
 
 def _generate_simulation_input_original(df, output_path):
     """Generate simulation input from original data format."""
 
-    # Convert H3 integer to hex string, then to lat/lng for coordinates
     def h3_to_lat_lng(h3_id):
         try:
-            # Convert integer H3 ID to hex string format
             if isinstance(h3_id, (int, float)):
                 h3_hex = format(int(h3_id), "x")
             else:
                 h3_hex = str(h3_id)
-
             return h3.cell_to_boundary(h3_hex)
         except Exception as e:
             logger.warning(
                 f"Warning: Failed to convert H3 ID {h3_id} to coordinates: {e}"
             )
-            return (0.0, 0.0)  # Default if conversion fails
+            return (0.0, 0.0)
 
-    # Sort by user and timestamp
-    df = df.sort_values(["caid", "stay_start_timestamp"]).reset_index(drop=True)
+    df = df.sort_values(["caid", "stay_start_timestamp"], kind="stable").reset_index(
+        drop=True
+    )
 
-    with open(output_path, "w") as g:
-        current_user = None
-        user_locations = {}
-        user_location_coords = {}
+    # Convert each unique H3 cell once, then map back.
+    unique_h3 = df["h3_id_region"].drop_duplicates()
+    h3_coords = {h: h3_to_lat_lng(h) for h in unique_h3}
+    lat_lng = df["h3_id_region"].map(h3_coords)
+    longitude = lat_lng.map(lambda p: p[1]).astype(str)
+    latitude = lat_lng.map(lambda p: p[0]).astype(str)
 
-        for _, row in df.iterrows():
-            user_id = str(row["caid"])
-            location_type = row["type"]  # 0=home, 1=work, 2=other
-            h3_id = row["h3_id_region"]
+    # location_id: 0 → 'h', 1 → 'w', else str(h3_region_stay_id+1) with '1' fallback
+    if "h3_region_stay_id" in df.columns:
+        stay_idx = (
+            pd.to_numeric(df["h3_region_stay_id"], errors="coerce")
+            .fillna(0)
+            .astype(int)
+            + 1
+        )
+        location_id = stay_idx.astype(str)
+    else:
+        location_id = pd.Series(["1"] * len(df), index=df.index)
+    location_id = location_id.mask(df["type"] == 0, "h").mask(df["type"] == 1, "w")
 
-            # Convert location type to label
-            if location_type == 0:
-                location_id = "h"
-            elif location_type == 1:
-                location_id = "w"
-            else:
-                # For 'other' locations, use the h3_region_stay_id if available, otherwise use a sequential number
-                try:
-                    location_id = str(int(row["h3_region_stay_id"]) + 1)
-                except (ValueError, TypeError, KeyError):
-                    location_id = "1"  # Default if h3_region_stay_id not available
-
-            # Get coordinates from H3
-            lat, lng = h3_to_lat_lng(h3_id)
-            longitude = str(lng)
-            latitude = str(lat)
-
-            # If new user, flush previous user's data
-            if current_user is not None and user_id != current_user:
-                g.write(current_user + "\n")
-                for loc_id in user_locations:
-                    g.write(
-                        f"{loc_id} {user_locations[loc_id]} "
-                        f"{user_location_coords[loc_id][0]} "
-                        f"{user_location_coords[loc_id][1]}\n"
-                    )
-                user_locations.clear()
-                user_location_coords.clear()
-
-            # Update current user's data
-            current_user = user_id
-            if location_id in user_locations:
-                user_locations[location_id] += 1
-            else:
-                user_locations[location_id] = 1
-                user_location_coords[location_id] = [longitude, latitude]
-
-        # Final flush for last user
-        if current_user is not None:
-            g.write(current_user + "\n")
-            for loc_id in user_locations:
-                g.write(
-                    f"{loc_id} {user_locations[loc_id]} "
-                    f"{user_location_coords[loc_id][0]} "
-                    f"{user_location_coords[loc_id][1]}\n"
-                )
-
+    out = pd.DataFrame(
+        {
+            "caid": df["caid"].astype(str),
+            "location_id": location_id,
+            "Longitude": longitude,
+            "Latitude": latitude,
+        }
+    )
+    _write_user_location_blocks(out, output_path)
     logger.info(f"Simulation input written to: {output_path}")
 
 
