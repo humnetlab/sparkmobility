@@ -1333,10 +1333,20 @@ void run_DT_simulation(
     double rho,
     double gamma
 ) {
-    // Set memory limit to 2GB
+    // Cap virtual memory as a safety net against runaway allocations.
+    // The previous 2 GB ceiling was hit by Arrow memory-pool fragmentation
+    // even on 100k-row-group parquets (at ~46M rows, ~75% of groups bad_alloc'd).
+    // Default raised to 16 GB; override via SPARKMOBILITY_MEM_LIMIT_MB.
+    long mem_limit_mb = 16384L;
+    if (const char* env = std::getenv("SPARKMOBILITY_MEM_LIMIT_MB")) {
+        long v = std::atol(env);
+        if (v >= 512L) {
+            mem_limit_mb = v;
+        }
+    }
     struct rlimit rl;
-    rl.rlim_cur = 2048L * 1024 * 1024;
-    rl.rlim_max = 2048L * 1024 * 1024;
+    rl.rlim_cur = static_cast<rlim_t>(mem_limit_mb) * 1024L * 1024L;
+    rl.rlim_max = static_cast<rlim_t>(mem_limit_mb) * 1024L * 1024L;
     setrlimit(RLIMIT_AS, &rl);
 
     srand(time(NULL));
