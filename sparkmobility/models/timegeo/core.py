@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 import shutil
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -201,33 +202,31 @@ class TimeGeo:
                 filtered_table, str(param_input_path), row_group_size=100_000
             )
 
-        # Non-commuters first, then commuters — matches the legacy order; the
-        # C++ writes two distinct subdirs so ordering does not matter.
-        ok_nc = self._cpp.run_parameter_generation(
-            input_path=param_input_path,
-            output_dir=self._paths.parameters,
-            commuter_mode=False,
-            min_num_stay=self.min_num_stay,
-            max_num_stay=self.max_num_stay,
-            nw_thres=self.nw_thres,
-            slot_interval=self.slot_interval,
-            rho=self.rho,
-            gamma=self.gamma,
-        )
+        # Non-commuters and commuters share the input but write distinct
+        # subdirs (parameters_commuters/, parameters_noncommuters/), so the
+        # two passes are independent. Run them concurrently — each C++
+        # process self-caps to 2 GB via setrlimit, so combined peak is
+        # bounded at 4 GB.
+        def _run(commuter_mode: bool) -> bool:
+            return self._cpp.run_parameter_generation(
+                input_path=param_input_path,
+                output_dir=self._paths.parameters,
+                commuter_mode=commuter_mode,
+                min_num_stay=self.min_num_stay,
+                max_num_stay=self.max_num_stay,
+                nw_thres=self.nw_thres,
+                slot_interval=self.slot_interval,
+                rho=self.rho,
+                gamma=self.gamma,
+            )
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            fut_nc = pool.submit(_run, False)
+            fut_c = pool.submit(_run, True)
+            ok_nc = fut_nc.result()
+            ok_c = fut_c.result()
         if not ok_nc:
             raise RuntimeError("C++ parameter generation (non-commuters) failed")
-
-        ok_c = self._cpp.run_parameter_generation(
-            input_path=param_input_path,
-            output_dir=self._paths.parameters,
-            commuter_mode=True,
-            min_num_stay=self.min_num_stay,
-            max_num_stay=self.max_num_stay,
-            nw_thres=self.nw_thres,
-            slot_interval=self.slot_interval,
-            rho=self.rho,
-            gamma=self.gamma,
-        )
         if not ok_c:
             raise RuntimeError("C++ parameter generation (commuters) failed")
 
