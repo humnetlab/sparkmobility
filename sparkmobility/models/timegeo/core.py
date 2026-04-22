@@ -18,6 +18,8 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 import pandas as pd
+import pyarrow.dataset as ds
+import pyarrow.parquet as pq
 
 from sparkmobility.logging_setup import configure_if_needed
 from sparkmobility.models.timegeo._native.runner import CppModuleHandler
@@ -180,14 +182,24 @@ class TimeGeo:
         # Stage 2: C++ parameter estimation. It reads the aligned parquet
         # (has Latitude/Longitude + string `type`) filtered by the FA user set.
         cleaned_df = pd.read_parquet(cleaned_path)
-        frequent_user_ids = set(cleaned_df["caid"].unique())
+        frequent_user_ids = cleaned_df["caid"].unique().tolist()
         num_users = len(frequent_user_ids)
         logger.info("parameter generation over %d users", num_users)
 
-        aligned_df = pd.read_parquet(aligned_path)
-        param_input_df = aligned_df[aligned_df["caid"].isin(frequent_user_ids)]
-        param_input_path = self._paths.srfiltered / "FilteredForParameters.parquet"
-        param_input_df.to_parquet(param_input_path, index=False, row_group_size=100_000)
+        # When FA was skipped, the aligned parquet already has exactly the
+        # users that cleaned_df covers — hand C++ the aligned path directly.
+        # Otherwise scan-and-filter with an Arrow predicate so we never
+        # materialize the full aligned parquet in pandas.
+        if self.skip_frequent_user_extraction or self.min_unique_locations <= 0:
+            param_input_path = aligned_path
+        else:
+            param_input_path = self._paths.srfiltered / "FilteredForParameters.parquet"
+            filtered_table = ds.dataset(str(aligned_path), format="parquet").to_table(
+                filter=ds.field("caid").isin(frequent_user_ids)
+            )
+            pq.write_table(
+                filtered_table, str(param_input_path), row_group_size=100_000
+            )
 
         # Non-commuters first, then commuters — matches the legacy order; the
         # C++ writes two distinct subdirs so ordering does not matter.
