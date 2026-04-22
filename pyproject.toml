@@ -83,30 +83,32 @@ else:
 [tool.cibuildwheel.linux]
 archs = ["x86_64"]
 manylinux-x86_64-image = "manylinux_2_28"
-# Install Arrow / Parquet / H3 / Snappy from conda-forge via micromamba
-# inside the manylinux container. conda-forge tracks upstream Arrow
-# releases faster than distro packages and provides CMake configs for
-# all four libs. OpenMP + libstdc++ come from the manylinux image's
-# built-in toolchain (GCC 11+), which matches auditwheel's manylinux_2_28
-# ABI allowlist. pybind11 is provided by scikit-build-core's build
-# isolation, so no need to install it here.
+# Install Arrow / Parquet / Snappy from conda-forge via micromamba. Build
+# H3 from upstream source because conda-forge's h3 CMake config ships an
+# absolute path into its build-sandbox sysroot (.../libm.so), which
+# Ninja trips over outside that sandbox. OpenMP + libstdc++ come from
+# the manylinux image's GCC 11+ toolchain.
 before-all = """
 curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xvj -C /tmp bin/micromamba
 /tmp/bin/micromamba create -y -r /tmp/mm -n build -c conda-forge \
-    libarrow libparquet h3 snappy
+    libarrow libparquet snappy
+git clone --depth 1 -b v4.2.1 https://github.com/uber/h3.git /tmp/h3src
+cmake -S /tmp/h3src -B /tmp/h3src/build -DCMAKE_INSTALL_PREFIX=/tmp/h3 \
+    -DBUILD_SHARED_LIBS=ON -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=Release
+cmake --build /tmp/h3src/build --target install -j
 """
-environment = { CMAKE_ARGS = "-DCMAKE_PREFIX_PATH=/tmp/mm/envs/build", LD_LIBRARY_PATH = "/tmp/mm/envs/build/lib" }
-# auditwheel needs the conda-forge lib dir on LD_LIBRARY_PATH so it can
-# resolve + bundle libarrow / libparquet / libh3 / libsnappy under
-# sparkmobility.libs/ with rpath rewrites pointing into the wheel.
-repair-wheel-command = "LD_LIBRARY_PATH=/tmp/mm/envs/build/lib auditwheel repair -w {dest_dir} {wheel}"
+environment = { CMAKE_ARGS = "-DCMAKE_PREFIX_PATH=/tmp/mm/envs/build;/tmp/h3", LD_LIBRARY_PATH = "/tmp/mm/envs/build/lib:/tmp/h3/lib64:/tmp/h3/lib" }
+# auditwheel resolves + bundles libarrow / libparquet / libh3 / libsnappy
+# into sparkmobility.libs/ with rpath rewrites.
+repair-wheel-command = "LD_LIBRARY_PATH=/tmp/mm/envs/build/lib:/tmp/h3/lib64:/tmp/h3/lib auditwheel repair -w {dest_dir} {wheel}"
 
 [tool.cibuildwheel.macos]
 archs = ["arm64"]
-# macOS arm64 uses Homebrew; brew prefix is /opt/homebrew on Apple Silicon.
-# Minimum deployment target 11.0 is the floor for arm64.
+# Deployment target pinned to 14.0 -- brew only ships current-OS bottles
+# on macos-14 runners, so Arrow and friends require >=14.0. Dropping to
+# 11.0 would need building brew deps from source, which isn't worth it.
 before-all = "brew install apache-arrow h3 snappy libomp"
-environment = { CMAKE_PREFIX_PATH = "/opt/homebrew", MACOSX_DEPLOYMENT_TARGET = "11.0" }
+environment = { CMAKE_PREFIX_PATH = "/opt/homebrew", MACOSX_DEPLOYMENT_TARGET = "14.0" }
 
 [tool.ruff]
 line-length = 100
