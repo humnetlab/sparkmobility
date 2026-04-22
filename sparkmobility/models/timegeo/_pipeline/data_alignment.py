@@ -127,7 +127,10 @@ def align(
 
     output_path = paths.data_cdr / "StayRegionsFiltered.parquet"
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    df[out_cols].to_parquet(output_path, index=False)
+    # row_group_size=100_000 keeps each Arrow row-group small enough for
+    # the C++ binary (which self-caps at 2 GB via setrlimit) to decode in
+    # one shot. Without this, C++ OOMs on ~60% of row groups at 46M rows.
+    df[out_cols].to_parquet(output_path, index=False, row_group_size=100_000)
     logger.info("aligned data saved to %s", output_path)
     return output_path
 
@@ -208,7 +211,14 @@ def _align_spark(
 
     output_path = paths.data_cdr / "StayRegionsFiltered.parquet"
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    df.select(*out_cols).write.mode("overwrite").parquet(str(output_path))
+    # parquet.block.size caps each Arrow row-group so the C++ binary's
+    # 2 GB self-rlimit doesn't trip when decoding one group at a time.
+    (
+        df.select(*out_cols)
+        .write.option("parquet.block.size", str(64 * 1024 * 1024))
+        .mode("overwrite")
+        .parquet(str(output_path))
+    )
     logger.info("aligned spark data saved to %s", output_path)
     return output_path
 
