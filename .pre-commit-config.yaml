@@ -1,23 +1,21 @@
 repos:
   - repo: https://github.com/psf/black
-    rev: 22.3.0
+    rev: 24.10.0
     hooks:
       - id: black
-  - repo: https://github.com/charliermarsh/ruff-pre-commit
-    rev: "v0.0.226"
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
     hooks:
       - id: ruff
-        # Respect `exclude` and `extend-exclude` settings.
-        args: ["--force-exclude"]
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v2.3.0
+    rev: v5.0.0
     hooks:
       - id: check-yaml
       - id: check-toml
       - id: end-of-file-fixer
       - id: trailing-whitespace
-  - repo: https://github.com/pre-commit/mirrors-isort
-    rev: v5.5.4
+  - repo: https://github.com/pycqa/isort
+    rev: 5.13.2
     hooks:
       - id: isort
         args: ["--profile", "black"]

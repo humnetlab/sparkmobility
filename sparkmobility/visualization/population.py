@@ -91,7 +91,7 @@ def plot_mobility_distributions(myDataset):
         xlim=(0, 24),
     )
     ax[2].set(
-        xlabel="$\Delta t$",
+        xlabel=r"$\Delta t$",
         xticks=[0, 6, 12, 18, 24],
         xticklabels=["0", "6", "12", "18", "24"],
         xlim=(0, 24),
