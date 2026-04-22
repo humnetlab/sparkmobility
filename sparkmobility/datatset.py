@@ -78,7 +78,7 @@ class MobilityDataset:
             F.col("local_time")
         )
         stays_lagged = df.withColumn(
-            f"h3_index_prev", F.lag(F.col("h3_index_res" + str(hex_resolution))).over(w)
+            "h3_index_prev", F.lag(F.col("h3_index_res" + str(hex_resolution))).over(w)
         )
         od_flow = (
             stays_lagged.na.drop(
@@ -97,10 +97,10 @@ class MobilityDataset:
             .withColumn(
                 "distance",
                 self.haversine(
-                    F.col(f"lat_lng_origin.lat"),
-                    F.col(f"lat_lng_origin.lon"),
-                    F.col(f"lat_lng_destination.lat"),
-                    F.col(f"lat_lng_destination.lon"),
+                    F.col("lat_lng_origin.lat"),
+                    F.col("lat_lng_origin.lon"),
+                    F.col("lat_lng_destination.lat"),
+                    F.col("lat_lng_destination.lon"),
                 ),
             )
             .drop("lat_lng_origin", "lat_lng_destination")

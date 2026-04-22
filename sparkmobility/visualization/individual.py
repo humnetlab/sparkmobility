@@ -1,14 +1,8 @@
 import folium
 import h3
 import matplotlib
-import matplotlib.gridspec as gridspec
-import matplotlib.pyplot as plt
-import numpy as np
 import seaborn as sns
 from matplotlib.colors import LinearSegmentedColormap
-from matplotlib.ticker import MultipleLocator
-
-from sparkmobility.utils.session import create_spark_session
 
 sns.set(style="whitegrid", font_scale=1.5)
 custom_colors = [
@@ -28,7 +22,7 @@ matplotlib.rcParams.update({"legend.fontsize": 14, "legend.handlelength": 2})
 def plot_trajectories(df, latitude_col="latitude", longitude_col="longitude"):
     try:
         map_center = [df[latitude_col].mean(), df[longitude_col].mean()]
-    except Exception as e:
+    except Exception:
         df["latitude"] = df["h3_index"].apply(lambda x: h3.cell_to_latlng(x)[0])
         df["longitude"] = df["h3_index"].apply(lambda x: h3.cell_to_latlng(x)[1])
         map_center = [df["latitude"].mean(), df["longitude"].mean()]

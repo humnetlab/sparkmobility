@@ -1,11 +1,8 @@
-import json
 import os
 
 import censusdis.data as ced
 import geopandas as gpd
 import h3
-import numpy as np
-import shapely
 from censusdis.maps import ShapeReader
 from shapely.geometry import Polygon
 from shapely.geometry.multipolygon import MultiPolygon
