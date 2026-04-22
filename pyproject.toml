@@ -1,6 +1,116 @@
 [build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["scikit-build-core>=0.10"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "sparkmobility"
+version = "1.0.0"
+description = "Human mobility modeling with Spark and the TimeGeo simulator"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+
+authors = [
+  { name = "Shangqing Cao", email = "caoalbert@berkeley.edu" }
+]
+
+dependencies = [
+  "branca>=0.7",
+  "censusdis>=1.4.0",
+  "folium>=0.20.0",
+  "geopandas>=1.0.1",
+  "geopy>=2.4.1",
+  "h3>=4.1",
+  "h3spark>=0.0.4",
+  "matplotlib>=3.8.4",
+  "numpy>=1.26.4",
+  "pandas>=2.2",
+  "powerlaw>=1.5",
+  "pyarrow>=14.0.2",
+  "pyproj>=3.6.1",
+  "pyspark>=3.5.1",
+  "scikit-learn>=1.4",
+  "scipy>=1.12",
+  "seaborn>=0.13",
+  "shapely>=2.0",
+  "statsmodels>=0.14.4",
+  "tqdm>=4.66.4",
+]
+
+[project.optional-dependencies]
+dev = [
+  "black>=24.10",
+  "isort>=5.13",
+  "pre-commit>=4.0",
+  "ruff>=0.8",
+]
+test = [
+  "pytest>=7.4",
+]
+
+[tool.scikit-build]
+cmake.version = ">=3.20"
+cmake.build-type = "Release"
+wheel.packages = ["sparkmobility"]
+wheel.exclude = [
+  "sparkmobility/models/timegeo/_native/module_2_3_1.cpp",
+]
+
+[tool.cibuildwheel]
+# Build only CPython 3.11+ on Linux (x86_64) and macOS (arm64). Windows is
+# excluded because module_2_3_1.cpp uses POSIX-only headers. musllinux is
+# also excluded — Arrow/Parquet wheels on musllinux are not well-tested.
+build = ["cp311-*", "cp312-*", "cp313-*"]
+skip = ["*-musllinux_*", "*-win*", "*-manylinux_i686"]
+build-verbosity = 1
+
+# After repair, import sparkmobility to load native deps (libarrow, etc.)
+# would pull in the full Python dep graph (pyspark, pyarrow, geopandas...)
+# which isn't the point of this test. Just assert the binary was installed
+# next to runner.py and is executable.
+test-command = """python -c "
+import os, sys
+for p in sys.path:
+    b = os.path.join(p, 'sparkmobility', 'models', 'timegeo', '_native', 'module_2_3_1')
+    if os.path.isfile(b):
+        assert os.access(b, os.X_OK), f'not executable: {b}'
+        print('binary OK:', b, os.path.getsize(b), 'bytes')
+        break
+else:
+    sys.exit('module_2_3_1 binary missing from installed wheel')
+" """
+
+[tool.cibuildwheel.linux]
+archs = ["x86_64"]
+manylinux-x86_64-image = "manylinux_2_28"
+# Install Arrow / Parquet / Snappy from the official Apache Arrow
+# AlmaLinux 8 repo rather than conda-forge. conda-forge's libarrow is
+# built with GCC 13+ and pulls in GLIBCXX_3.4.30/31 symbols that
+# manylinux_2_28's GCC 12 can't satisfy at link time. The Arrow project's
+# own AlmaLinux 8 packages == manylinux_2_28 target, so their ABI
+# matches the image's toolchain. H3 is built from source: upstream
+# CMake config is clean, and the library is tiny.
+before-all = """
+dnf install -y epel-release
+dnf install -y https://apache.jfrog.io/artifactory/arrow/almalinux/8/apache-arrow-release-latest.rpm
+dnf install -y --enablerepo=epel arrow-devel parquet-devel snappy-devel
+git clone --depth 1 -b v4.2.1 https://github.com/uber/h3.git /tmp/h3src
+cmake -S /tmp/h3src -B /tmp/h3src/build -DCMAKE_INSTALL_PREFIX=/tmp/h3 \
+    -DBUILD_SHARED_LIBS=ON -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=Release
+cmake --build /tmp/h3src/build --target install -j
+"""
+environment = { CMAKE_ARGS = "-DCMAKE_PREFIX_PATH=/tmp/h3" }
+# auditwheel needs to find libh3 to bundle it (Arrow/Parquet/Snappy are
+# already in standard system paths after the dnf install).
+repair-wheel-command = "LD_LIBRARY_PATH=/tmp/h3/lib64:/tmp/h3/lib auditwheel repair -w {dest_dir} {wheel}"
+
+[tool.cibuildwheel.macos]
+archs = ["arm64"]
+# Deployment target pinned to 14.0 -- brew only ships current-OS bottles
+# on macos-14 runners, so Arrow and friends require >=14.0. Dropping to
+# 11.0 would need building brew deps from source, which isn't worth it.
+before-all = "brew install apache-arrow h3 snappy libomp"
+environment = { CMAKE_PREFIX_PATH = "/opt/homebrew", MACOSX_DEPLOYMENT_TARGET = "14.0" }
 
 [tool.ruff]
 line-length = 100
@@ -8,72 +118,3 @@ line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "W"]
 ignore = ["E501"]
-
-[project]
-name = "sparkmobility"
-version = "0.1.0"
-description = "Human mobility basic package"
-readme = "README.md"
-license = "MIT"
-
-authors = [
-  { name = "Shangqing Cao", email = "caoalbert@berkeley.edu" }
-]
-
-requires-python = ">=3.11"
-
-dependencies = [
-  "powerlaw>=1.5",
-  "h3spark>=0.0.4",
-  "h3>=4.1",
-  "censusdis>=1.4.0",
-  "matplotlib>=3.8.4",
-  "tqdm>=4.66.4",
-  "folium>=0.20.0",
-  "tqdm>=4.67.1",
-  "geopandas==1.0.1",
-  "statsmodels>=0.14.4",
-  "geopy>=2.4.1",
-  "numpy>=1.26.4",
-  "py4j>=0.10.9.7",
-  "pyarrow>=14.0.2",
-  "pyproj>=3.6.1",
-  "setuptools>=69.5.1",
-  "pyspark>=3.5.1",
-  "appnope>=0.1.4",
-  "asttokens>=3.0.0",
-  "comm>=0.2.2",
-  "debugpy>=1.8.11",
-  "decorator>=5.1.1",
-  "exceptiongroup>=1.2.2",
-  "executing>=2.1.0",
-  "importlib-metadata>=8.6.1",
-  "ipykernel>=6.29.5",
-  "ipython>=8.32.0",
-  "jedi>=0.19.2",
-  "jupyter_client>=8.6.3",
-  "jupyter_core>=5.7.2",
-  "matplotlib-inline>=0.1.7",
-  "nest-asyncio>=1.6.0",
-  "packaging>=24.2",
-  "parso>=0.8.4",
-  "pexpect>=4.9.0",
-  "pickleshare>=0.7.5",
-  "pip>=25.0",
-  "platformdirs>=4.3.6",
-  "prompt-toolkit>=3.0.50",
-  "psutil>=5.9.0",
-  "ptyprocess>=0.7.0",
-  "pure_eval>=0.2.3",
-  "pygments>=2.19.1",
-  "python-dateutil>=2.9.0.post0",
-  "pyzmq>=26.2.0",
-  "six>=1.17.0",
-  "stack_data>=0.6.3",
-  "tornado>=6.4.2",
-  "traitlets>=5.14.3",
-  "typing_extensions>=4.12.2",
-  "wcwidth>=0.2.13",
-  "wheel>=0.45.1",
-  "zipp>=3.21.0"
-]

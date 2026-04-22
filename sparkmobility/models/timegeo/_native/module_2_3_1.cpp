@@ -59,8 +59,6 @@
 #include <set>
 #include <unordered_set>
 #include <ctime>
-#include <pybind11/pybind11.h>
-#include <pybind11/stl.h>
 #include <filesystem>
 
 namespace fs = std::filesystem;
@@ -73,6 +71,11 @@ namespace fs = std::filesystem;
 #define CHUNK_SIZE 10000
 
 using namespace std;
+
+// Suppress per-row-group progress chatter when --quiet is passed (or
+// TIMEGEO_QUIET=1 is set in the environment). All other output still emits
+// so the Python-side log filter can pick up genuinely useful lines.
+static bool g_quiet = false;
 
 // Adapted from 2-DT_Comm.cpp
 vector<double> real_time;
@@ -1319,11 +1322,6 @@ double AreaTestStat(const std::vector<double>& times, const std::vector<double>&
     return area / nbins;
 }
 
-// Suppress per-row-group progress chatter when --quiet is passed (or
-// TIMEGEO_QUIET=1 is set in the environment). All other output still emits
-// so the Python-side log filter can pick up genuinely useful lines.
-static bool g_quiet = false;
-
 void run_DT_simulation(
     const std::string& input_path,
     const std::string& output_dir,
@@ -1394,37 +1392,4 @@ int main(int argc, char* argv[]) {
     double gamma      = pos.size() > 8 ? std::stod(pos[8]) : -0.21;
     run_DT_simulation(input_path, output_dir, commuter_flag, min_num_stay, max_num_stay, nw_thres, slot_interval, rho, gamma);
     if (!g_quiet) std::cout << "Ending program..." << std::endl;
-}
-
-// Pybind11 bindings
-namespace py = pybind11;
-PYBIND11_MODULE(module_2_3_1, m) {
-    m.doc() = "Python bindings for module_2_3_1 TimeGeo simulation";
-    m.def("run_DT_simulation", [](
-        const std::string& input_path,
-        const std::string& output_dir,
-        bool commuter_mode,
-        int min_num_stay,
-        int max_num_stay,
-        double nw_thres,
-        int slot_interval,
-        double rho,
-        double gamma
-    ) {
-        // Release the GIL for the duration of the C++ computation
-        py::gil_scoped_release release;
-        run_DT_simulation(input_path, output_dir, commuter_mode, min_num_stay,
-                         max_num_stay, nw_thres, slot_interval, rho, gamma);
-    },
-    "Run the TimeGeo simulation model with extended parameter control",
-    py::arg("input_path"),
-    py::arg("output_dir"),
-    py::arg("commuter_mode") = true,
-    py::arg("min_num_stay") = 2,
-    py::arg("max_num_stay") = 3000,
-    py::arg("nw_thres") = 1.0,
-    py::arg("slot_interval") = 600,
-    py::arg("rho") = 0.6,
-    py::arg("gamma") = -0.21
-    );
 }
