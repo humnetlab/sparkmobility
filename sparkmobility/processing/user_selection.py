@@ -91,12 +91,10 @@ class UserSelection:
         )
 
         out_path = self.dataset.output_path + "/FilteredUserStayPoints"
-        logger.info(
-            "filtered %d/%d users; saved to %s",
-            self.dataset.num_filtered_users,
-            self.dataset.num_total_users,
-            out_path,
-        )
+        print(f"Total users: {self.dataset.num_total_users}")
+        print(f"Filtered users: {self.dataset.num_filtered_users}")
+        print(f" Saved to: {out_path}")
+        print(f"Filtered users saved to: {out_path}")
         df_grouped.unpersist()
         return fig, ax
 
