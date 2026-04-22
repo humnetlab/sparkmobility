@@ -421,8 +421,30 @@ def simulate(
                 else:
                     workingSlots = []
                     workLocation = []
+
+                # Worker flagged but no 'w' line in locations file: processUser
+                # dereferences workLocation[0] on the work→other transition and
+                # IndexErrors. Fall back to home coords (same fallback that
+                # mapMatching uses further down).
+                if workingSlots and not workLocation:
+                    home_entry = next(
+                        (x for x in userLocations.get(userId, []) if x[0] == 0),
+                        None,
+                    )
+                    if home_entry is not None:
+                        workLocation = [home_entry[2], home_entry[3]]
+                    else:
+                        workingSlots = []
                 b1, b2, nw = float(line[1]), float(line[2]), float(line[3])
                 locsVisited = userLocations.get(userId, [])
+
+                # Some users appear in the parameter file but have no matching
+                # home/other entries in the locations file. processUser would
+                # IndexError on locs[0] immediately; skip them cleanly.
+                if not locsVisited:
+                    logger.info(f"[WARN] Skipping user {userId}: no locations in input")
+                    numErrors += 1
+                    continue
 
                 modifiedWorkingSlots = []
                 for rng in workingSlots:
