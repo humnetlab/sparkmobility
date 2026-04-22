@@ -13,9 +13,22 @@ if(NOT Snappy_FOUND)
   find_library(SNAPPY_LIBRARY NAMES snappy REQUIRED)
   find_path(SNAPPY_INCLUDE_DIR snappy.h REQUIRED)
 endif()
+# Apple Clang doesn't ship OpenMP and FindOpenMP can't locate brew's keg-only
+# libomp without hints. Supply the flags + library path so find_package(OpenMP)
+# succeeds with the libomp installed by `brew install libomp`.
+if(APPLE)
+  execute_process(
+    COMMAND brew --prefix libomp
+    OUTPUT_VARIABLE LIBOMP_PREFIX
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+  )
+  set(OpenMP_C_FLAGS "-Xpreprocessor -fopenmp -I${LIBOMP_PREFIX}/include")
+  set(OpenMP_CXX_FLAGS "-Xpreprocessor -fopenmp -I${LIBOMP_PREFIX}/include")
+  set(OpenMP_C_LIB_NAMES "omp")
+  set(OpenMP_CXX_LIB_NAMES "omp")
+  set(OpenMP_omp_LIBRARY "${LIBOMP_PREFIX}/lib/libomp.dylib")
+endif()
 find_package(OpenMP REQUIRED)
-find_package(Python 3.11 REQUIRED COMPONENTS Interpreter Development)
-find_package(pybind11 CONFIG REQUIRED)
 
 add_executable(module_2_3_1
   sparkmobility/models/timegeo/_native/module_2_3_1.cpp
@@ -26,8 +39,6 @@ target_link_libraries(module_2_3_1 PRIVATE
   Parquet::parquet_shared
   h3::h3
   OpenMP::OpenMP_CXX
-  pybind11::embed
-  Python::Python
 )
 
 if(Snappy_FOUND)
