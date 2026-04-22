@@ -16,11 +16,16 @@ import shutil
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
 import pandas as pd
 import pyarrow.dataset as ds
 import pyarrow.parquet as pq
+
+if TYPE_CHECKING:
+    from pyspark.sql import DataFrame as SparkDataFrame
+else:
+    SparkDataFrame = None
 
 from sparkmobility.logging_setup import configure_if_needed
 from sparkmobility.models.timegeo._native.runner import CppModuleHandler
@@ -114,7 +119,7 @@ class TimeGeo:
 
     def fit(
         self,
-        stay_df: pd.DataFrame,
+        stay_df: "Union[pd.DataFrame, SparkDataFrame]",
         user_column: str = "caid",
         timestamp_column: str = "stay_start_timestamp",
         location_column: str = "h3_id_region",
@@ -123,8 +128,12 @@ class TimeGeo:
     ) -> Dict[str, Any]:
         """Estimate parameters from a stay-point DataFrame.
 
-        Writes intermediates under ``work_dir`` (tempdir by default) and
-        returns a stats dict. Call :meth:`generate` afterwards.
+        Accepts either a pandas DataFrame or a pyspark.sql.DataFrame.
+        Spark inputs run stage 1 (align) natively in Spark; later stages
+        remain single-node since the C++ binary and the multiprocessing
+        simulator already saturate a single host. Writes intermediates
+        under ``work_dir`` (tempdir by default) and returns a stats dict.
+        Call :meth:`generate` afterwards.
         """
         if work_dir is None:
             self._paths = TimeGeoPaths(Path(tempfile.mkdtemp(prefix="timegeo_")))
