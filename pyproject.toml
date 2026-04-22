@@ -56,6 +56,58 @@ wheel.exclude = [
   "sparkmobility/models/timegeo/_native/module_2_3_1.cpp",
 ]
 
+[tool.cibuildwheel]
+# Build only CPython 3.11+ on Linux (x86_64) and macOS (arm64). Windows is
+# excluded because module_2_3_1.cpp uses POSIX-only headers. musllinux is
+# also excluded — Arrow/Parquet wheels on musllinux are not well-tested.
+build = ["cp311-*", "cp312-*", "cp313-*"]
+skip = ["*-musllinux_*", "*-win*", "*-manylinux_i686"]
+build-verbosity = 1
+
+# After repair, import sparkmobility to load native deps (libarrow, etc.)
+# would pull in the full Python dep graph (pyspark, pyarrow, geopandas...)
+# which isn't the point of this test. Just assert the binary was installed
+# next to runner.py and is executable.
+test-command = """python -c "
+import os, sys
+for p in sys.path:
+    b = os.path.join(p, 'sparkmobility', 'models', 'timegeo', '_native', 'module_2_3_1')
+    if os.path.isfile(b):
+        assert os.access(b, os.X_OK), f'not executable: {b}'
+        print('binary OK:', b, os.path.getsize(b), 'bytes')
+        break
+else:
+    sys.exit('module_2_3_1 binary missing from installed wheel')
+" """
+
+[tool.cibuildwheel.linux]
+archs = ["x86_64"]
+manylinux-x86_64-image = "manylinux_2_28"
+# Install Arrow / Parquet / H3 / Snappy from conda-forge via micromamba
+# inside the manylinux container. conda-forge tracks upstream Arrow
+# releases faster than distro packages and provides CMake configs for
+# all four libs. OpenMP + libstdc++ come from the manylinux image's
+# built-in toolchain (GCC 11+), which matches auditwheel's manylinux_2_28
+# ABI allowlist. pybind11 is provided by scikit-build-core's build
+# isolation, so no need to install it here.
+before-all = """
+curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xvj -C /tmp bin/micromamba
+/tmp/bin/micromamba create -y -r /tmp/mm -n build -c conda-forge \
+    libarrow libparquet h3 snappy
+"""
+environment = { CMAKE_ARGS = "-DCMAKE_PREFIX_PATH=/tmp/mm/envs/build", LD_LIBRARY_PATH = "/tmp/mm/envs/build/lib" }
+# auditwheel needs the conda-forge lib dir on LD_LIBRARY_PATH so it can
+# resolve + bundle libarrow / libparquet / libh3 / libsnappy under
+# sparkmobility.libs/ with rpath rewrites pointing into the wheel.
+repair-wheel-command = "LD_LIBRARY_PATH=/tmp/mm/envs/build/lib auditwheel repair -w {dest_dir} {wheel}"
+
+[tool.cibuildwheel.macos]
+archs = ["arm64"]
+# macOS arm64 uses Homebrew; brew prefix is /opt/homebrew on Apple Silicon.
+# Minimum deployment target 11.0 is the floor for arm64.
+before-all = "brew install apache-arrow h3 snappy libomp"
+environment = { CMAKE_PREFIX_PATH = "/opt/homebrew", MACOSX_DEPLOYMENT_TARGET = "11.0" }
+
 [tool.ruff]
 line-length = 100
 
