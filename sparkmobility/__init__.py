@@ -19,13 +19,17 @@ except PackageNotFoundError:
     __version__ = "0.1.0"
 
 JAR_NAME = f"sparkmobility-{__version__}.jar"
-JAR_URL = f"https://storage.googleapis.com/sparkmobility/{JAR_NAME}"
+# Published by sparkmobility-scala's .github/workflows/release.yml on tag push.
+JAR_URL = (
+    f"https://github.com/humnetlab/sparkmobility-scala/releases/download/"
+    f"v{__version__}/{JAR_NAME}"
+)
 JAR_PATH = os.path.join(os.path.dirname(__file__), "lib", JAR_NAME)
 
 
 def ensure_jar():
     if not os.path.exists(JAR_PATH):
-        logger.info("JAR file not found at %s; downloading from GCS", JAR_PATH)
+        logger.info("JAR not found at %s; downloading from %s", JAR_PATH, JAR_URL)
         os.makedirs(os.path.dirname(JAR_PATH), exist_ok=True)
         urllib.request.urlretrieve(JAR_URL, JAR_PATH)
         logger.info("JAR download complete")
