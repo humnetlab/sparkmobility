@@ -23,6 +23,19 @@ logger = logging.getLogger(__name__)
 
 REQUIRED_COLUMNS = ("caid", "stay_start_timestamp", "type", "h3_id_region")
 
+# Canonical location-type encoding, shared by the Scala side
+# (LocationType.scala) and the C++ parameter binary
+# (module_2_3_1.cpp:128 -- "1 = home, 2 = work, 0 = other").
+TYPE_OTHER, TYPE_HOME, TYPE_WORK = 0, 1, 2
+TYPE_LABEL_TO_INT = {
+    "other": TYPE_OTHER,
+    "home": TYPE_HOME,
+    "work": TYPE_WORK,
+    "o": TYPE_OTHER,
+    "h": TYPE_HOME,
+    "w": TYPE_WORK,
+}
+
 
 def _is_spark_df(df) -> bool:
     """True iff ``df`` is a pyspark.sql.DataFrame, without importing pyspark
@@ -83,11 +96,19 @@ def align(
         "aligning %d stay points across %d users", len(df), df["caid"].nunique()
     )
 
-    # sparkmobility's FilteredUserStayPoints encodes `type` as int32
-    # {0=other, 1=home, 2=work}; downstream code expects string labels.
-    if pd.api.types.is_integer_dtype(df["type"]):
-        df = df.copy()
-        df["type"] = df["type"].map({0: "other", 1: "home", 2: "work"})
+    # `type` must reach the C++ parameter binary as an Int32Array: it resolves
+    # the column by name but casts with dynamic_pointer_cast<Int32Array>
+    # (module_2_3_1.cpp:1044), which returns null on any other Arrow type and
+    # silently leaves location_type=0 for every row. That makes the
+    # "not a work location" guard (line 356) always true, so work stays are
+    # folded into the activity accumulation and avg_loc_count comes out
+    # inflated. Normalize string labels to ints here rather than the reverse.
+    df = df.copy()
+    if not pd.api.types.is_integer_dtype(df["type"]):
+        df["type"] = (
+            df["type"].astype("string").str.strip().str.lower().map(TYPE_LABEL_TO_INT)
+        )
+    df["type"] = df["type"].fillna(TYPE_OTHER).astype("int32")
 
     # H3 integer -> hex string + lat/lng. Dedupe first: 45M rows collapse to
     # O(1e5) unique cells, so per-cell work beats per-row by orders of magnitude.
@@ -161,15 +182,16 @@ def _align_spark(
     if missing:
         raise ValueError(f"Missing required columns (after rename): {missing}")
 
-    # int {0,1,2} → string labels, matching the pandas path.
+    # String labels → canonical ints, matching the pandas path. See the
+    # comment there for why the C++ needs int32 and not strings.
     type_dtype = dict(df.dtypes)["type"]
-    if type_dtype in ("tinyint", "smallint", "int", "bigint"):
-        df = df.withColumn(
-            "type",
-            F.when(F.col("type") == 0, F.lit("other"))
-            .when(F.col("type") == 1, F.lit("home"))
-            .when(F.col("type") == 2, F.lit("work")),
+    if type_dtype not in ("tinyint", "smallint", "int", "bigint"):
+        label = F.lower(F.trim(F.col("type").cast("string")))
+        mapping = F.create_map(
+            *[x for k, v in TYPE_LABEL_TO_INT.items() for x in (F.lit(k), F.lit(v))]
         )
+        df = df.withColumn("type", mapping[label])
+    df = df.withColumn("type", F.coalesce(F.col("type"), F.lit(TYPE_OTHER)).cast("int"))
 
     df = df.withColumn("h3_id_region", F.col("h3_id_region").cast("long"))
 
