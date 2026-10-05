@@ -1,13 +1,34 @@
 import os
 
-import censusdis.data as ced
 import geopandas as gpd
 import h3
-from censusdis.maps import ShapeReader
 from shapely.geometry import Polygon
 from shapely.geometry.multipolygon import MultiPolygon
 
 TOTAL_POP = "B01003_001E"
+
+_CENSUS_EXTRA_HINT = (
+    "Census tessellation requires the optional `censusdis` dependency.\n"
+    "Install it with:\n\n"
+    "    pip install 'sparkmobility[census]'\n"
+)
+
+
+def _import_censusdis():
+    """Import censusdis on demand.
+
+    censusdis pulls in rasterio (and therefore GDAL), contextily and a Sphinx
+    toolchain -- roughly 95 of the package's transitive dependencies for a
+    feature only this module uses. It is an optional extra so that installing
+    sparkmobility does not require a GDAL build, and so a missing GDAL wheel
+    on some platform cannot break the whole package.
+    """
+    try:
+        import censusdis.data as ced
+        from censusdis.maps import ShapeReader
+    except ImportError as exc:  # pragma: no cover - depends on install extras
+        raise ImportError(_CENSUS_EXTRA_HINT) from exc
+    return ced, ShapeReader
 
 
 def tesselate_county(
@@ -55,6 +76,7 @@ def tesselate_county(
         for Census tracts or `'bg'` for Census block groups. Make sure this geography
         is available for the specified dataset and year.
     """
+    ced, ShapeReader = _import_censusdis()
 
     # Download total population data for each tract in the county
     # as well as the shapefiles for each tract.

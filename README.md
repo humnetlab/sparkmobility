@@ -45,6 +45,16 @@ pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/
 
 The `--extra-index-url` is required so that dependencies resolve from the main index.
 
+#### Optional extras
+
+U.S. Census tessellation (`sparkmobility.utils.census`, `sparkmobility.utils.county_tessellation`) needs `censusdis`, which is **not** installed by default:
+
+```
+pip install 'sparkmobility[census]'
+```
+
+It is optional because it pulls in `rasterio` — and therefore a GDAL toolchain — along with `contextily` and Sphinx, roughly 65 extra packages for one module. Without the extra, the rest of `sparkmobility` works normally and the census functions raise an `ImportError` telling you to install it.
+
 Or install from source:
 
 ```
