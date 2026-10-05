@@ -1,4 +1,5 @@
 import os
+import sys
 import tarfile
 import urllib.request
 
@@ -54,8 +55,12 @@ def download_and_extract():
 def configure_env():
     os.environ["SPARK_HOME"] = SPARK_DIR
     os.environ["PATH"] = f"{os.path.join(SPARK_DIR, 'bin')}:{os.environ['PATH']}"
-    os.environ["PYSPARK_PYTHON"] = "python"
-    os.environ["PYSPARK_DRIVER_PYTHON"] = "python"
+    # Point Spark at the interpreter actually running this process. Hardcoding
+    # "python" resolves against PATH, which in a conda env or venv is often a
+    # different minor version than the driver -- Spark then fails every Python
+    # worker task with PYTHON_VERSION_MISMATCH.
+    os.environ.setdefault("PYSPARK_PYTHON", sys.executable)
+    os.environ.setdefault("PYSPARK_DRIVER_PYTHON", sys.executable)
 
     print("Environment variables set for current session.")
     print(
