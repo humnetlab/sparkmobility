@@ -4,7 +4,21 @@ import os
 from sparkmobility.utils import spark_session
 
 
-class StayDetection:
+class GridStayDetection:
+    """Stay detection via sequential-centroid scanning with H3 grid binning.
+
+    Implements the algorithm of Zheng et al. (2010): points are split into
+    temporal segments on ``delta_t`` gaps, then a running centroid walks each
+    segment and opens a new stay whenever a point falls more than
+    ``spatial_threshold`` metres away. Stays are discretised onto H3 cells at
+    ``hex_resolution``, and home/work are inferred from per-cell visit
+    frequency weighted by distance from home.
+
+    Compute runs in the Scala/Spark backend over py4j. For the density-based
+    alternative that clusters stops with DBSCAN instead of snapping them to a
+    grid, see :class:`~sparkmobility.processing.cluster_stay_detection.ClusterStayDetection`.
+    """
+
     def __init__(
         self,
         MobilityDataset,
