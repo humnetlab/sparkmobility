@@ -1,5 +1,5 @@
 ![wheels](https://github.com/humnetlab/sparkmobility/actions/workflows/wheels.yml/badge.svg)
-![PyPI](https://img.shields.io/pypi/v/sparkmobility?cacheSeconds=3600)
+![TestPyPI](https://img.shields.io/badge/TestPyPI-1.0.1-blue)
 ![release](https://img.shields.io/github/v/release/humnetlab/sparkmobility?include_prereleases&cacheSeconds=3600)
 ![GitHub contributors](https://img.shields.io/github/contributors/humnetlab/sparkmobility?cacheSeconds=3600)
 
@@ -14,7 +14,7 @@
 
 Key features of `sparkmobility` include:
 
-- Apache Spark-based implementation of the stay detection algorithm published by [Zheng et al. (2010)](https://dl.acm.org/doi/10.1145/1772690.1772795).
+- Two stay-detection algorithms: a Spark implementation of [Zheng et al. (2010)](https://dl.acm.org/doi/10.1145/1772690.1772795) with H3 grid binning, and a density-based alternative that clusters stops with DBSCAN.
 
 - Inference of home and work locations.
 
@@ -28,17 +28,38 @@ Key features of `sparkmobility` include:
 2. [Examples](#examples)
 	- [Import and configure sparkmobility](#Import)
 	- [MobilityDataset](#MobilityDataset)
-	- [StayDetection](#StayDetection)
+	- [Stay detection](#StayDetection)
 	- [UserSelection](#UserSelection)
 
 
 <a id='installation'></a>
 ## Installation
 
-`sparkmobility` requires Python 3.11+ and a Java runtime (for Spark). Install from PyPI:
+`sparkmobility` requires Python 3.11+ and a Java runtime (for Spark).
+
+Wheels are currently published to **TestPyPI** (Linux x86_64 and macOS arm64, CPython 3.11–3.13):
 
 ```
-pip install sparkmobility
+pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple sparkmobility
+```
+
+The `--extra-index-url` is required so that dependencies resolve from the main index.
+
+#### Optional extras
+
+U.S. Census tessellation (`sparkmobility.utils.census`, `sparkmobility.utils.county_tessellation`) needs `censusdis`, which is **not** installed by default:
+
+```
+pip install 'sparkmobility[census]'
+```
+
+It is optional because it pulls in `rasterio` — and therefore a GDAL toolchain — along with `contextily` and Sphinx, roughly 65 extra packages for one module. Without the extra, the rest of `sparkmobility` works normally and the census functions raise an `ImportError` telling you to install it.
+
+Or install from source:
+
+```
+git clone https://github.com/humnetlab/sparkmobility.git
+pip install ./sparkmobility
 ```
 
 On first import, `sparkmobility` downloads Apache Spark into `~/.spark` and fetches the matching Scala JAR from the [sparkmobility-scala GitHub Releases](https://github.com/humnetlab/sparkmobility-scala/releases). The JAR version is pinned to the installed package version (e.g. `sparkmobility-1.0.0.jar` for v1.0.0), so the Python and Scala sides cannot drift.
@@ -86,12 +107,14 @@ In sparkmobility, the class `MobilityDataset` describes the mobility dataset. It
 - `processed_data_path` (type: str) ;
 - `column_mappings` (type: dict) ;
 
-Additionally, it is optional to define the time period and region of interests, which help reduce the computation time during the stay detection phase by selecting a subset of records:
+Additionally, define the time period and region of interest, which reduce computation during stay detection by selecting a subset of records:
 - `start_datetime` (type: datetime) ;
 - `end_datetime` (type: datetime) ;
-- `longitude` (type: list);
-- `latitude` (type: list);
-- `time_zone` (type: str) specifies the local time zone of the region of interest.
+- `longitude` (type: list) — `[min, max]`; **required by `GridStayDetection`**, optional for `ClusterStayDetection` ;
+- `latitude` (type: list) — likewise ;
+- `time_zone` (type: str) specifies the local time zone of the region of interest. It determines the local hours used for home/work inference, so set it to the region the data actually covers.
+
+> **Note:** `GridStayDetection` dereferences the bounding box unconditionally. If `longitude` / `latitude` are left as `None` it fails with `ArrayIndexOutOfBoundsException` rather than a helpful message, so set both.
 
 
 Initialize a `MobilityDataset`:
@@ -122,14 +145,34 @@ Initialize a `MobilityDataset`:
 
 
 <a id='StayDetection'></a>
-### Conduct `StayDetection`
+### Conduct stay detection
 
-`StayDetection` is a process for detecting the stay points and their respective stay duration from the raw mobility dataset, which comes in the format of (USER_ID, TIME, LNG, LAT). To call `StayDetection`:
+Stay detection reduces a raw mobility dataset in the format (USER_ID, TIME, LNG, LAT)
+to stay points with their durations. `sparkmobility` ships **two algorithms**. Both
+detect stays and then group them into *places*; they differ in how places are formed,
+which is the choice that matters for everything downstream.
+
+| | `GridStayDetection` | `ClusterStayDetection` |
+|---|---|---|
+| Stay detection | sequential centroid ([Zheng et al. 2010](https://dl.acm.org/doi/10.1145/1772690.1772795)) | pairwise distance/time thresholds + median-centroid refinement |
+| Places formed by | H3 cells at a fixed resolution | per-device DBSCAN clustering |
+| Compute | Scala/Spark backend via py4j | PySpark + scikit-learn |
+| Bounding box | required | optional |
+
+Pick `GridStayDetection` when you want places aligned to a shared spatial index — H3
+cells are comparable across users and join directly against tessellated data, which is
+what the OD-matrix and census utilities expect. Pick `ClusterStayDetection` when
+grid quantisation would distort the result: DBSCAN places adapt to where a given
+device actually dwells, so two homes on opposite sides of a cell boundary stay
+distinct, and a single home near a boundary does not split in two.
+
+Both write the same output schema, so `MobilityDataset`, `UserSelection` and the
+models consume either interchangeably.
 
 ```python
->>> from sparkmobility.processing.stay_detection import StayDetection
-# Initialize the StayDetection instance
->>> stays = StayDetection(MobilityDataset=myDataset)
+>>> from sparkmobility.processing import GridStayDetection
+# Initialize the stay detection instance
+>>> stays = GridStayDetection(MobilityDataset=myDataset)
 # Conduct stay detection
 >>> stays.get_stays(hex_resolution=9)
 # Compute OD flow matrix for trips between home and work locations
@@ -138,7 +181,25 @@ Initialize a `MobilityDataset`:
 >>> stays.summarize()
 ```
 
-Argument `hex_resolution` specifies the resolution of the hexagonal grids in the output data. The output of the `StayDetection` module is automatically saved to the directory `processed_data_path` when `MobilityDataset` is first initialized. The structures are:
+The density-based alternative takes the thresholds directly, in metres and seconds:
+
+```python
+>>> from sparkmobility.processing import ClusterStayDetection
+>>> stays = ClusterStayDetection(MobilityDataset=myDataset)
+>>> stays.get_stays(
+...     distance_threshold=50,     # metres: how far apart two pings can be and still be one stop
+...     min_stop_duration=300,     # seconds: discard anything shorter
+...     dbscan_distance=100,       # metres: DBSCAN eps over stop centroids
+...     dbscan_min_points=2,
+...     hex_resolution=8,          # only labels the cluster centroid; places are the clusters
+... )
+```
+
+> **Note:** `StayDetection` was renamed to `GridStayDetection` when the second
+> algorithm was added, since the bare name no longer says which one is meant. The
+> old name still imports and raises a `DeprecationWarning`.
+
+Argument `hex_resolution` specifies the resolution of the hexagonal grids in the output data. For `ClusterStayDetection` it only labels each cluster's centroid — places are the DBSCAN clusters themselves, not the cells. The output of either stay-detection class is automatically saved to the directory `processed_data_path` when `MobilityDataset` is first initialized. The structures are:
 
 ```
 📦 processed_data_path
@@ -153,7 +214,7 @@ Argument `hex_resolution` specifies the resolution of the hexagonal grids in the
  ┗ 📜 config.json
 ```
 
-To visualize the output of `StayDetection`, we can call the following visualization functions:
+To visualize the output of stay detection, we can call the following visualization functions:
 
 
 #### Plot mobiilty distributions:
@@ -216,7 +277,7 @@ The `UserSelection` modules filters the users in the stay points dataset based o
 The method `UserSelection.filter_users` returns a visualization of the number of users by the criteria and saves the stay points of the selected users to `processed_data_path/FilteredUserStayPoints`
 
 ```python
->>> from sparkmobility.processing.user_selection import UserSelection
+>>> from sparkmobility.processing import UserSelection
 # Create an instance variable for the UserSelection module
 >>> user_selection = UserSelection(myDataset)
 # Filter users based on the number of stay points and the active timespan

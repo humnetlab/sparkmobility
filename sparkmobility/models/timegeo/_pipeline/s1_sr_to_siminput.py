@@ -258,16 +258,27 @@ def clean_and_format_fa_users_parquet(input_path, output_path):
         ts = pd.to_datetime(df["timestamp"], unit="s")
         df["time"] = ts.dt.hour + ts.dt.minute / 60 + ts.dt.second / 3600
 
-    # Map `type` → trip_purpose. Post-align_data `type` is a string; keep
-    # legacy int fallbacks for standalone callers.
+    # Map `type` → trip_purpose. align() now emits the canonical int32
+    # encoding {0=other, 1=home, 2=work} (the C++ binary only reads `type`
+    # as an Int32Array), so ints are the primary case here. String labels
+    # are kept for standalone callers passing pre-align data.
+    #
+    # NOTE: the previous int fallbacks were {0: "h", 1: "w"}, which is a
+    # different convention (0=home, 1=work) and silently mislabels every
+    # purpose under the canonical encoding. Do not reintroduce them.
     type_map = {
+        0: "o",
+        1: "h",
+        2: "w",
+        "0": "o",
+        "1": "h",
+        "2": "w",
+        "other": "o",
         "home": "h",
         "work": "w",
-        "other": "o",
-        0: "h",
-        1: "w",
-        "0": "h",
-        "1": "w",
+        "o": "o",
+        "h": "h",
+        "w": "w",
     }
     df["trip_purpose"] = df["type"].map(type_map).fillna("o")
 

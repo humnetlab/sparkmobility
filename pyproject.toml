@@ -16,7 +16,6 @@ authors = [
 
 dependencies = [
   "branca>=0.7",
-  "censusdis>=1.4.0",
   "folium>=0.20.0",
   "geopandas>=1.0.1",
   "geopy>=2.4.1",
@@ -38,6 +37,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# censusdis drags in rasterio (hence GDAL), contextily and a Sphinx toolchain
+# -- ~95 of the ~115 transitive dependencies -- for one module,
+# utils/county_tessellation.py. Keeping it optional means a plain install
+# needs no GDAL, and a platform with no rasterio wheel (e.g. macOS 14 after
+# rasterio 1.5.2 moved its wheels to macosx_15_0) cannot break the build.
+census = [
+  "censusdis>=1.4.0",
+]
 dev = [
   "black>=24.10",
   "isort>=5.13",
